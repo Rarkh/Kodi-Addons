@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<addon id="service.watchsync" name="WatchSync" version="0.1.0" provider-name="Rarkh">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0"/>
+    </requires>
+    <extension point="xbmc.service" library="service.py"/>
+    <extension point="xbmc.addon.metadata">
+        <summary lang="de_DE">Synchronisiert den Wiedergabestatus</summary>
+        <summary lang="en_GB">Synchronises watch status</summary>
+        <description lang="de_DE">WatchSync läuft als Hintergrunddienst und reagiert auf Wiedergabe-Ereignisse.</description>
+        <description lang="en_GB">WatchSync runs as a background service and reacts to playback events.</description>
+        <platform>all</platform>
+        <license>MIT</license>
+    </extension>
+</addon>
