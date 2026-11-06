@@ -25,7 +25,7 @@ Every add-on in this repository has its own version and uses
 ## [Unreleased]
 ### Added
 - Repository layout: `addons/` (sources), `repo/` (generated), `tools/build_repo.py`, VS Code
-  build task and an optional GitHub Action that rebuilds `repo/` on push.
+  build task.
 - `repository.rarkh` 1.0.0: repository add-on that serves `repo/` from GitHub (raw).
 - `plugin.program.artlibcleanup` 0.1.0: finds and removes cached images (fanart, screenshots,
   actor thumbnails) of items that are no longer in the video or music library. Preview (dry run)

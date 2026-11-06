@@ -54,7 +54,7 @@ git commit -m "Update <addon> to <version>"
 git push
 ```
 
-`repo/` must be committed, because Kodi reads exactly these files. The GitHub repository must
+`repo/` must be committed, because Kodi reads exactly these files. Always build locally before committing. The GitHub repository must
 be **public**.
 
 ## Install the repository in Kodi
@@ -79,13 +79,3 @@ Restart Kodi afterwards (new add-ons are detected at startup). Changes to `.py` 
 next time the add-on is run; services need a restart of the add-on or of Kodi. Remove the
 junction with `rmdir "%APPDATA%\Kodi\addons\<id>"` (this deletes only the link, not the source).
 Do not keep the same id installed from the repository at the same time.
-
-## Automatic build on push (optional)
-
-`.github/workflows/build.yml` runs `tools/build_repo.py` on every push to `main` that changes
-`addons/` or `tools/`, and commits `repo/` if anything changed.
-
-Overlap with building locally: both produce the same files, but the ZIP bytes can differ
-slightly between machines (different zlib), so the action may add a "Rebuild repo" commit even
-if you built locally. Run `git pull` before your next push. If you always build locally, delete
-the file.
