@@ -146,14 +146,15 @@ def collect_library(call: Call, include_music: bool, progress: Progress) -> Coll
 
 
 def fetch_textures(call: Call, progress: Progress) -> list[dict[str, Any]]:
-    def on_page(done: int, total: int) -> None:
-        progress(f"Textures.GetTextures ({done}/{total})", done / total if total else 0.0)
+    """Fetch all cached textures in one call.
 
-    return fetch_pages(
-        call,
-        "Textures.GetTextures",
-        "textures",
-        {"properties": ["url", "sizes"]},
-        "textureid",
-        on_page,
-    )
+    Textures.GetTextures does not accept `limits` on all Kodi versions, so it is not paged.
+    If the `sizes` property is rejected, retry with the url only (sizes then count as 0).
+    """
+    progress("Textures.GetTextures", 0.0)
+    try:
+        result = call("Textures.GetTextures", {"properties": ["url", "sizes"]})
+    except RpcError:
+        result = call("Textures.GetTextures", {"properties": ["url"]})
+    progress("Textures.GetTextures", 1.0)
+    return result.get("textures") or []

@@ -23,6 +23,10 @@ Every add-on in this repository has its own version and uses
 - Changes not yet released are collected under `[Unreleased]`. Entries name the add-on.
 
 ## [Unreleased]
+
+## [plugin.program.artlibcleanup 0.1.1]
+### Fixed
+- `Textures.GetTextures` failed with "Invalid params": the image cache is now read in one call without `limits`.
 ### Added
 - Repository layout: `addons/` (sources), `repo/` (generated), `tools/build_repo.py`, VS Code
   build task.

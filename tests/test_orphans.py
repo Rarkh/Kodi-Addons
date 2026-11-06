@@ -40,6 +40,7 @@ class FakeKodi:
         self.calls: list[str] = []
         self.removed: list[int] = []
         self.fail_on: str | None = None
+        self.reject_sizes = False
 
     KEYS = {
         "VideoLibrary.GetMovies": "movies",
@@ -68,6 +69,13 @@ class FakeKodi:
             self.removed.append(params["textureid"])
             return {}
         items = self.data.get(method, [])
+        if method == "Textures.GetTextures":
+            # Like real Kodi: no `limits` support, everything in one answer
+            if "limits" in params:
+                raise RpcError(f"{method}: Invalid params.")
+            if self.reject_sizes and "sizes" in params["properties"]:
+                raise RpcError(f"{method}: Invalid params.")
+            return {"textures": items}
         lim = params["limits"]
         return {
             self.KEYS[method]: items[lim["start"] : lim["end"]],
@@ -215,3 +223,15 @@ def test_make_call_reports_errors_and_bad_json():
         library.make_call(lambda req: '{"error":{"message":"nope"}}')("X", {})
     with pytest.raises(RpcError):
         library.make_call(lambda req: "<html>")("X", {})
+
+
+def test_textures_are_fetched_without_limits():
+    fake = make_fake()
+    assert len(fetch_textures(fake, lambda label, fraction: None)) == 11
+
+
+def test_textures_fall_back_when_sizes_is_rejected():
+    fake = make_fake()
+    fake.reject_sizes = True
+    assert len(fetch_textures(fake, lambda label, fraction: None)) == 11
+    assert fake.calls.count("Textures.GetTextures") == 2
