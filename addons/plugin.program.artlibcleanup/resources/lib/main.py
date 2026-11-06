@@ -1,4 +1,4 @@
-"""Oberfläche: Fortschritt, Ergebnisdialog, Löschen."""
+"""User interface: progress, result dialog, deletion."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ class Log:
 
 
 class ProgressDialog:
-    """Fortschrittsdialog, der bei Abbruch Cancelled wirft."""
+    """Progress dialog that raises Cancelled when the user aborts."""
 
     def __init__(self, title: str) -> None:
         self.dialog = xbmcgui.DialogProgress()
@@ -63,7 +63,7 @@ class ProgressDialog:
 
 
 def scan(call: Call, include_music: bool, log: Log) -> tuple[list[Texture], list[str]]:
-    """Liest Bibliothek und Cache und liefert (Waisen, übersprungene Kategorien)."""
+    """Read library and cache; return (orphans, skipped categories)."""
     progress = ProgressDialog(tr(30011))
     try:
         collected = collect_library(call, include_music, progress)
@@ -73,8 +73,8 @@ def scan(call: Call, include_music: bool, log: Log) -> tuple[list[Texture], list
         progress.close()
 
     log(
-        f"Bibliothek: {collected.counts}, {len(collected.urls)} Bild-URLs, "
-        f"{len(textures)} Texturen im Cache"
+        f"Library: {collected.counts}, {len(collected.urls)} image URLs, "
+        f"{len(textures)} textures in cache"
     )
     skipped = []
     categories = [VIDEO] + ([MUSIC] if include_music else [])
@@ -113,11 +113,11 @@ def delete(call: Call, orphans: list[Texture], log: Log) -> None:
                 call("Textures.RemoveTexture", {"textureid": tex.texture_id})
             except RpcError as exc:
                 failed += 1
-                log(f"Löschen fehlgeschlagen: {tex.url}: {exc}", xbmc.LOGWARNING)
+                log(f"Delete failed: {tex.url}: {exc}", xbmc.LOGWARNING)
                 continue
             removed += 1
             freed += tex.size
-            log(f"Gelöscht: {tex.url} ({human_size(tex.size)})")
+            log(f"Deleted: {tex.url} ({human_size(tex.size)})")
     except Cancelled:
         xbmcgui.Dialog().ok(HEADING, tr(30028) + "\n" + tr(30027, removed, human_size(freed)))
         return
@@ -145,13 +145,13 @@ def run() -> None:
         dialog.notification(HEADING, tr(30028))
         return
     except RpcError as exc:
-        log(f"Abfrage fehlgeschlagen: {exc}", xbmc.LOGERROR)
+        log(f"Query failed: {exc}", xbmc.LOGERROR)
         dialog.ok(HEADING, tr(30029, exc))
         return
 
     if len(skipped) == (2 if include_music else 1):
-        # Keine einzige Kategorie hat Bibliothekseinträge: nichts vergleichbar, nichts löschen
-        log("Bibliothek leer, Abbruch", xbmc.LOGWARNING)
+        # No category has library entries: nothing to compare against, delete nothing
+        log("Library empty, aborting", xbmc.LOGWARNING)
         dialog.ok(HEADING, tr(30030))
         return
 
@@ -164,7 +164,7 @@ def run() -> None:
     summary = tr(30021, len(orphans), human_size(total)) + note
     log(summary)
     for tex in orphans:
-        log(f"Verwaist: {tex.url} ({tex.category}, {human_size(tex.size)})", xbmc.LOGDEBUG)
+        log(f"Orphaned: {tex.url} ({tex.category}, {human_size(tex.size)})", xbmc.LOGDEBUG)
 
     while details:
         if not dialog.yesno(HEADING, summary, nolabel=tr(30023), yeslabel=tr(30022)):

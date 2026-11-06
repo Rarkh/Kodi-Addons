@@ -1,5 +1,5 @@
 * text=auto eol=lf
-# Die Prüfsumme von addons.xml muss auf jedem System gleich bleiben
+# The checksum of addons.xml must stay the same on every system
 repo/addons.xml text eol=lf
 repo/addons.xml.md5 text eol=lf
 *.xml text eol=lf

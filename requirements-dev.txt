@@ -1,4 +1,4 @@
-# Entwicklungswerkzeuge (Autovervollständigung für xbmc*, Tests, Lint)
+# Development tools (autocompletion for xbmc*, tests, lint)
 Kodistubs
 pytest
 pytest-cov

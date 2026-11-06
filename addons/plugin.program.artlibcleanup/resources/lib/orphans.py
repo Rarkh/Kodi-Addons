@@ -1,6 +1,6 @@
-"""Vergleichslogik: welche gecachten Texturen gehören zu keiner Bibliothek mehr?
+"""Comparison logic: which cached textures no longer belong to any library?
 
-Reiner Python-Code ohne Kodi-Importe, damit er sich testen lässt.
+Plain Python without Kodi imports, so it can be tested.
 """
 
 from __future__ import annotations
@@ -14,17 +14,17 @@ from urllib.parse import unquote, urlsplit
 VIDEO = "video"
 MUSIC = "music"
 
-# Eine normalisierte URL: (Art des image://-Wrappers oder "", Schlüssel)
-NormUrl = Tuple[str, str]  # noqa: UP006  (Kodi 19 läuft teils auf Python 3.8)
+# A normalised URL: (type of the image:// wrapper or "", key)
+NormUrl = Tuple[str, str]  # noqa: UP006  (Kodi 19 may run on Python 3.8)
 
 _CREDENTIALS = re.compile(r"^([a-z][a-z0-9+.-]*://)[^/@]*@", re.IGNORECASE)
 _WRAPPER_TYPE = re.compile(r"^([a-z]+)@(.*)$", re.DOTALL)
 
-# Diese Texturen gehören nie zur Bibliothek: Skin, Addons, Systemressourcen
+# These textures never belong to the library: skin, add-ons, system resources
 _PROTECTED_PREFIXES = ("special://", "resource://", "plugin://", "androidapp://", "addons://")
 _PROTECTED_PARTS = ("/addons/", "/skin.", "/addon_data/")
 
-# Bildserver der Scraper (Host-Endung -> Kategorie)
+# Image hosts used by scrapers
 _VIDEO_HOSTS = (
     "image.tmdb.org",
     "thetvdb.com",
@@ -47,10 +47,10 @@ _MUSIC_HOSTS = (
 
 
 def normalize(url: str) -> NormUrl:
-    """Bringt eine URL in eine vergleichbare Form.
+    """Bring a URL into a comparable form.
 
-    Löst image://-Wrapper (auch geschachtelt) und Prozent-Kodierung auf, ignoriert Optionen
-    hinter '?', Zugangsdaten in der URL, Groß-/Kleinschreibung und Schrägstrich-Richtung.
+    Resolves image:// wrappers (also nested) and percent-encoding; ignores options after
+    '?', credentials in the URL, letter case and slash direction.
     """
     kind = ""
     text = (url or "").strip()
@@ -63,14 +63,14 @@ def normalize(url: str) -> NormUrl:
         if match:
             kind, text = match.group(1).lower(), match.group(2)
         text = unquote(text)
-    # Einheitlich ein weiteres Mal dekodieren, damit "%20" und " " zusammenpassen
+    # Decode once more uniformly so that "%20" and " " match
     text = unquote(text).replace("\\", "/")
     text = _CREDENTIALS.sub(r"\1", text, count=1)
     return kind, text.rstrip("/").casefold()
 
 
 def source_prefixes(source_files: Iterable[str]) -> list[str]:
-    """Normalisierte Pfade der Bibliotheksquellen (multipath:// wird aufgelöst)."""
+    """Normalised paths of the library sources (multipath:// is resolved)."""
     result: list[str] = []
     for src in source_files:
         if src.lower().startswith("multipath://"):
@@ -95,7 +95,7 @@ def _host_matches(host: str, suffixes: Iterable[str]) -> bool:
 def classify(
     norm: NormUrl, video_sources: Iterable[str] = (), music_sources: Iterable[str] = ()
 ) -> str | None:
-    """Gibt 'video', 'music' oder None zurück (None = nicht anfassen)."""
+    """Return 'video', 'music' or None (None = do not touch)."""
     kind, key = norm
     if not key:
         return None
@@ -147,8 +147,8 @@ def find_orphans(
 ) -> list[Texture]:
     """Bestimmt verwaiste Texturen.
 
-    reference_categories sagt, wie viele Bibliothekseinträge je Kategorie gefunden wurden.
-    Eine Kategorie ohne Einträge wird nie bereinigt (Schutz gegen Totalverlust).
+    reference_categories says how many library entries were found per category.
+    A category without entries is never cleaned (protection against total loss).
     """
     refs = {normalize(u) for u in referenced if u}
     video_src = list(video_sources)

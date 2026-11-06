@@ -1,4 +1,4 @@
-"""Tests der Orphan-Logik mit gemockten JSON-RPC-Antworten."""
+"""Tests of the orphan logic with mocked JSON-RPC responses."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ ALBUM_OLD = "https://www.theaudiodb.com/images/media/album/thumb/old.jpg"
 
 
 class FakeKodi:
-    """Beantwortet JSON-RPC-Aufrufe aus festen Daten, mit Paging wie Kodi."""
+    """Answers JSON-RPC calls from fixed data, with paging like Kodi."""
 
     def __init__(self, library_data: dict[str, list[dict]], textures: list[dict]) -> None:
         self.data = dict(library_data)
@@ -162,7 +162,7 @@ def test_finds_only_unreferenced_library_art():
     assert set(orphans) == {2, 5, 9, 11}
     assert orphans[2].size == 2000 and orphans[2].category == VIDEO
     assert orphans[9].category == MUSIC
-    assert orphans[11].category == VIDEO  # video@-Vorschaubild einer entfernten Datei
+    assert orphans[11].category == VIDEO  # video@ thumbnail of a removed file
 
 
 def test_music_can_be_excluded():

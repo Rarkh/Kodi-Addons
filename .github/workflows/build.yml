@@ -1,5 +1,5 @@
-# Optional: baut repo/ bei jedem Push auf main neu und committet es.
-# Kann gelöscht werden, wenn du immer lokal baust (siehe README).
+# Optional: rebuilds repo/ on every push to main and commits it.
+# Can be deleted if you always build locally (see README).
 name: Build repo
 
 on:

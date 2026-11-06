@@ -1,5 +1,5 @@
-"""Daten aus Kodi holen (JSON-RPC). Die eigentliche Aufrufmethode wird übergeben,
-damit die Logik ohne Kodi testbar ist: call(method, params) -> result-Dict.
+"""Fetch data from Kodi (JSON-RPC). The actual call function is passed in so the logic
+can be tested without Kodi: call(method, params) -> result dict.
 """
 
 from __future__ import annotations
@@ -14,16 +14,16 @@ from resources.lib.orphans import MUSIC, VIDEO, source_prefixes
 PAGE_SIZE = 200
 
 Call = Callable[[str, Dict[str, Any]], Dict[str, Any]]
-# progress(Beschriftung, Fortschritt 0..1); darf eine Exception zum Abbrechen werfen
+# progress(label, fraction 0..1); may raise an exception to cancel
 Progress = Callable[[str, float], None]
 
 
 class RpcError(Exception):
-    """Eine JSON-RPC-Abfrage ist fehlgeschlagen."""
+    """A JSON-RPC query failed."""
 
 
 def make_call(execute: Callable[[str], str]) -> Call:
-    """Verpackt xbmc.executeJSONRPC zu call(method, params)."""
+    """Wrap xbmc.executeJSONRPC as call(method, params)."""
     counter = {"id": 0}
 
     def call(method: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -32,7 +32,7 @@ def make_call(execute: Callable[[str], str]) -> Call:
         try:
             response = json.loads(execute(json.dumps(request)))
         except ValueError as exc:
-            raise RpcError(f"{method}: ungültige Antwort") from exc
+            raise RpcError(f"{method}: invalid response") from exc
         if "error" in response:
             message = response["error"].get("message", response["error"])
             raise RpcError(f"{method}: {message}")
@@ -49,7 +49,7 @@ def fetch_pages(
     id_key: str,
     on_page: Callable[[int, int], None] | None = None,
 ) -> list[dict[str, Any]]:
-    """Holt alle Seiten einer Listenabfrage. on_page(geholt, gesamt) meldet den Fortschritt."""
+    """Fetch all pages of a list query. on_page(fetched, total) reports progress."""
     items: list[dict[str, Any]] = []
     seen_ids: set[Any] = set()
     start = 0
@@ -70,7 +70,7 @@ def fetch_pages(
         start += len(page)
         if on_page:
             on_page(len(items), max(total, len(items)))
-        # Ende: leere/zu kurze Seite, Gesamtzahl erreicht oder Server ignoriert limits
+        # Done: empty/short page, total reached, or the server ignores limits
         if not page or fresh == 0 or len(page) < PAGE_SIZE or (total and start >= total):
             return items
 
@@ -90,7 +90,7 @@ def _art_values(item: dict[str, Any]) -> Iterable[str]:
 @dataclass
 class Collected:
     urls: set[str] = field(default_factory=set)
-    # Anzahl Bibliothekseinträge je Kategorie
+    # Number of library entries per category
     counts: dict[str, int] = field(default_factory=lambda: {VIDEO: 0, MUSIC: 0})
     video_sources: list[str] = field(default_factory=list)
     music_sources: list[str] = field(default_factory=list)
@@ -117,14 +117,14 @@ def _sources(call: Call, media: str) -> list[str]:
 
 
 def collect_library(call: Call, include_music: bool, progress: Progress) -> Collected:
-    """Sammelt alle in den Bibliotheken verwendeten Bild-URLs und die Quellenpfade.
+    """Collect all image URLs used by the libraries, and the source paths.
 
-    Wirft RpcError, wenn irgendeine Abfrage fehlschlägt: dann darf nichts gelöscht werden.
+    Raises RpcError if any query fails: in that case nothing may be deleted.
     """
     queries = [(VIDEO, *q) for q in _VIDEO_QUERIES]
     if include_music:
         queries += [(MUSIC, *q) for q in _MUSIC_QUERIES]
-    steps = len(queries) + 1  # +1 für die Quellen
+    steps = len(queries) + 1  # +1 for the sources
     collected = Collected()
 
     progress("Files.GetSources", 0.0)

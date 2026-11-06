@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<addon id="repository.alex" name="Alex Repository" version="1.0.0" provider-name="Rarkh">
+<addon id="repository.rarkh" name="Rarkh Repository" version="1.0.0" provider-name="Rarkh">
     <requires>
         <import addon="xbmc.addon" version="12.0.0"/>
     </requires>
-    <extension point="xbmc.addon.repository" name="Alex Repository">
+    <extension point="xbmc.addon.repository" name="Rarkh Repository">
         <dir>
             <info compressed="false">https://raw.githubusercontent.com/Rarkh/Kodi-Addons/main/repo/addons.xml</info>
             <checksum>https://raw.githubusercontent.com/Rarkh/Kodi-Addons/main/repo/addons.xml.md5</checksum>
@@ -11,8 +11,8 @@
         </dir>
     </extension>
     <extension point="xbmc.addon.metadata">
-        <summary lang="de_DE">Alex' Kodi-Addon-Repository</summary>
-        <summary lang="en_GB">Alex' Kodi add-on repository</summary>
+        <summary lang="de_DE">Rarkh's Kodi-Addon-Repository</summary>
+        <summary lang="en_GB">Rarkh's Kodi add-on repository</summary>
         <description lang="de_DE">Stellt eigene Kodi-Addons über GitHub bereit und hält sie automatisch aktuell.</description>
         <description lang="en_GB">Provides my own Kodi add-ons via GitHub and keeps them up to date automatically.</description>
         <platform>all</platform>
