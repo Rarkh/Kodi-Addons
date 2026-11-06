@@ -1,0 +1,8 @@
+* text=auto eol=lf
+# Die Prüfsumme von addons.xml muss auf jedem System gleich bleiben
+repo/addons.xml text eol=lf
+repo/addons.xml.md5 text eol=lf
+*.xml text eol=lf
+*.zip binary
+*.png binary
+*.jpg binary

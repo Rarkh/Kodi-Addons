@@ -1,0 +1,11 @@
+# SonarQube-Scanner
+.scannerwork/
+
+# Python / Tests
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+build/

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<addon id="plugin.program.artlibcleanup" name="Art Library Cleanup" version="0.1.0" provider-name="Rarkh">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0"/>
+    </requires>
+    <extension point="xbmc.python.pluginsource" library="default.py">
+        <provides>executable</provides>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary lang="de_DE">Entfernt verwaiste Bilder aus dem Kodi-Cache</summary>
+        <summary lang="en_GB">Removes orphaned images from the Kodi cache</summary>
+        <description lang="de_DE">Kodi löscht gecachte Bilder (Fanart, Screenshots, Schauspielerbilder) nicht, wenn ein Film oder eine Serie aus der Bibliothek entfernt wird. Dieses Addon vergleicht den Bildcache mit der Video- und optional der Musikbibliothek, zeigt die verwaisten Einträge samt Größe an und löscht sie nach Bestätigung. Skin-Bilder und Addon-Icons bleiben unangetastet. Standardmäßig läuft nur eine Vorschau (Dry-Run).</description>
+        <description lang="en_GB">Kodi does not delete cached images (fanart, screenshots, actor thumbnails) when a movie or show is removed from the library. This add-on compares the image cache with the video library and optionally the music library, lists the orphaned entries with their size and removes them after confirmation. Skin images and add-on icons are never touched. By default only a preview (dry run) is performed.</description>
+        <platform>all</platform>
+        <license>MIT</license>
+        <assets>
+            <icon>icon.png</icon>
+            <fanart>fanart.jpg</fanart>
+        </assets>
+    </extension>
+</addon>

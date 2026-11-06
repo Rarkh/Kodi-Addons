@@ -1,0 +1,100 @@
+# Kodi Media Center language file
+# Addon Name: Art Library Cleanup
+# Addon id: plugin.program.artlibcleanup
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Language: en_GB\n"
+
+msgctxt "#30001"
+msgid "General"
+msgstr "General"
+
+msgctxt "#30002"
+msgid "Preview only (dry run, delete nothing)"
+msgstr "Preview only (dry run, delete nothing)"
+
+msgctxt "#30003"
+msgid "Include music library"
+msgstr "Include music library"
+
+msgctxt "#30004"
+msgid "Show details"
+msgstr "Show details"
+
+msgctxt "#30005"
+msgid "Write log to kodi.log"
+msgstr "Write log to kodi.log"
+
+msgctxt "#30006"
+msgid "When enabled, orphaned images are only listed. Turn this off to be able to delete them."
+msgstr "When enabled, orphaned images are only listed. Turn this off to be able to delete them."
+
+msgctxt "#30011"
+msgid "Reading library..."
+msgstr "Reading library..."
+
+msgctxt "#30012"
+msgid "Reading image cache..."
+msgstr "Reading image cache..."
+
+msgctxt "#30020"
+msgid "No orphaned images found. Nothing to clean up."
+msgstr "No orphaned images found. Nothing to clean up."
+
+msgctxt "#30021"
+msgid "Found {0} orphaned cache entries ({1})."
+msgstr "Found {0} orphaned cache entries ({1})."
+
+msgctxt "#30022"
+msgid "View details"
+msgstr "View details"
+
+msgctxt "#30023"
+msgid "Continue"
+msgstr "Continue"
+
+msgctxt "#30024"
+msgid "Preview mode is on (see settings). Nothing was deleted."
+msgstr "Preview mode is on (see settings). Nothing was deleted."
+
+msgctxt "#30025"
+msgid "Delete these {0} entries ({1}) from the image cache?"
+msgstr "Delete these {0} entries ({1}) from the image cache?"
+
+msgctxt "#30026"
+msgid "Deleting..."
+msgstr "Deleting..."
+
+msgctxt "#30027"
+msgid "Done: {0} entries removed, {1} freed."
+msgstr "Done: {0} entries removed, {1} freed."
+
+msgctxt "#30028"
+msgid "Cancelled."
+msgstr "Cancelled."
+
+msgctxt "#30029"
+msgid "Aborted: a library query failed. Nothing was deleted.\n{0}"
+msgstr "Aborted: a library query failed. Nothing was deleted.\n{0}"
+
+msgctxt "#30030"
+msgid "Aborted: the library is empty. Nothing was deleted."
+msgstr "Aborted: the library is empty. Nothing was deleted."
+
+msgctxt "#30031"
+msgid "Skipped (no library entries): {0}"
+msgstr "Skipped (no library entries): {0}"
+
+msgctxt "#30032"
+msgid "Video"
+msgstr "Video"
+
+msgctxt "#30033"
+msgid "Music"
+msgstr "Music"
+
+msgctxt "#30034"
+msgid "{0} entries could not be removed."
+msgstr "{0} entries could not be removed."
+

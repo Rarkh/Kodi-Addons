@@ -1,0 +1,19 @@
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+extend-exclude = ["repo"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.pyright]
+include = ["addons", "tools", "tests"]
+extraPaths = ["addons/plugin.program.artlibcleanup", "tools"]
+pythonVersion = "3.8"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["addons/plugin.program.artlibcleanup", "tools"]
+
+[tool.coverage.run]
+source = ["addons/plugin.program.artlibcleanup/resources/lib", "tools"]

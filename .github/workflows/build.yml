@@ -1,0 +1,32 @@
+# Optional: baut repo/ bei jedem Push auf main neu und committet es.
+# Kann gelöscht werden, wenn du immer lokal baust (siehe README).
+name: Build repo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "addons/**"
+      - "tools/**"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python tools/build_repo.py
+      - name: Commit changes in repo/
+        run: |
+          if [ -n "$(git status --porcelain repo)" ]; then
+            git config user.name "github-actions"
+            git config user.email "github-actions@users.noreply.github.com"
+            git add repo
+            git commit -m "Rebuild repo"
+            git push
+          fi

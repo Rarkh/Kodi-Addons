@@ -1,0 +1,26 @@
+{
+  "stages": [
+    {
+      "name": "Ruff",
+      "steps": [{ "name": "Ruff", "command": "python -m ruff check ." }]
+    },
+    {
+      "name": "Pyright",
+      "steps": [{ "name": "Pyright", "command": "python -m pyright" }]
+    },
+    {
+      "name": "pytest",
+      "steps": [
+        {
+          "name": "pytest",
+          "command": "python -m pytest --junitxml=build/junit.xml --cov --cov-report=xml:coverage.xml",
+          "junit": "build/junit.xml"
+        }
+      ]
+    },
+    {
+      "name": "SonarQube",
+      "steps": [{ "name": "SonarQube", "command": "..\\sonarqube\\scan.cmd" }]
+    }
+  ]
+}

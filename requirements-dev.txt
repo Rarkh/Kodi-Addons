@@ -1,0 +1,6 @@
+# Entwicklungswerkzeuge (Autovervollständigung für xbmc*, Tests, Lint)
+Kodistubs
+pytest
+pytest-cov
+ruff
+pyright
