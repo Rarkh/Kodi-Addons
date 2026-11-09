@@ -16,4 +16,11 @@ testpaths = ["tests"]
 pythonpath = ["addons/plugin.program.artlibcleanup", "tools"]
 
 [tool.coverage.run]
-source = ["addons/plugin.program.artlibcleanup/resources/lib", "tools"]
+include = ["addons/**/*.py", "tools/**/*.py"]
+omit = ["repo/*"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 100

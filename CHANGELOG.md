@@ -24,6 +24,16 @@ Every add-on in this repository has its own version and uses
 
 ## [Unreleased]
 
+## [repository.rarkh 1.0.1]
+### Changed
+- New fanart image.
+
+## [plugin.program.artlibcleanup 0.1.2]
+### Changed
+- New fanart image.
+- Test suite covers 100 % of the add-on code and `tools/` (lines and branches); the pipeline fails
+  below 100 %.
+
 ## [plugin.program.artlibcleanup 0.1.1]
 ### Fixed
 - `Textures.GetTextures` failed with "Invalid params": the image cache is now read in one call without `limits`.

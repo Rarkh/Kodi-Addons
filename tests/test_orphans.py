@@ -235,3 +235,45 @@ def test_textures_fall_back_when_sizes_is_rejected():
     fake.reject_sizes = True
     assert len(fetch_textures(fake, lambda label, fraction: None)) == 11
     assert fake.calls.count("Textures.GetTextures") == 2
+
+
+def test_normalize_stops_after_five_wrapper_levels():
+    deep = TMDB_POSTER
+    for _ in range(6):
+        deep = wrap(deep)
+    # More nesting than the loop resolves: still returns a key without raising
+    assert normalize(deep)[1]
+
+
+def test_source_prefixes_skips_empty_parts():
+    assert source_prefixes(["", "multipath://%2fx%2f/", "smb://nas/a/"]) == ["/x", "smb://nas/a"]
+
+
+def test_classify_handles_empty_and_typed_keys():
+    assert classify(("", "")) is None
+    assert classify(("video", "smb://nas/x.jpg")) == VIDEO
+    assert classify(("music", "smb://nas/x.jpg")) == MUSIC
+
+
+def test_classify_matches_local_music_sources():
+    assert classify(normalize("smb://nas/musik/a.jpg"), [], ["smb://nas/musik"]) == MUSIC
+    assert classify(normalize("smb://nas/other/a.jpg"), [], ["smb://nas/musik"]) is None
+
+
+def test_paging_keeps_items_without_id():
+    items = [{"name": "a"}, {"name": "b"}]
+    fake = make_fake(**{"VideoLibrary.GetMovies": items})
+    fetched = library.fetch_pages(fake, "VideoLibrary.GetMovies", "movies", {}, "movieid")
+    assert [i["name"] for i in fetched] == ["a", "b"]
+
+
+def test_art_values_ignore_non_string_values():
+    item = {"art": {"poster": None, "fanart": wrap(TMDB_POSTER)}, "thumbnail": None}
+    item["cast"] = [{"thumbnail": None}, {"thumbnail": ACTOR}]
+    assert set(library._art_values(item)) == {wrap(TMDB_POSTER), ACTOR}
+
+
+def test_collect_reads_top_level_thumbnails():
+    sets = [{"setid": 1, "thumbnail": wrap(TMDB_POSTER), "fanart": ACTOR}]
+    collected, _ = run_scan(make_fake(**{"VideoLibrary.GetMovieSets": sets}))
+    assert {wrap(TMDB_POSTER), ACTOR} <= collected.urls
