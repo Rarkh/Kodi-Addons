@@ -119,7 +119,9 @@ def main() -> int:
     data = render_addons_xml([b.xml_text for b in built])
     REPO_DIR.mkdir(exist_ok=True)
     (REPO_DIR / "addons.xml").write_bytes(data)
-    (REPO_DIR / "addons.xml.md5").write_text(hashlib.md5(data).hexdigest(), encoding="ascii")
+    # MD5 is the checksum format Kodi expects in addons.xml.md5, not a security measure
+    checksum = hashlib.md5(data, usedforsecurity=False).hexdigest()
+    (REPO_DIR / "addons.xml.md5").write_text(checksum, encoding="ascii")
 
     print(f"{'Addon':<36}{'Version':<10}{'ZIP size':>12}")
     print("-" * 58)

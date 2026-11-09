@@ -12,6 +12,7 @@ from typing import Any, Callable, Dict
 from resources.lib.orphans import MUSIC, VIDEO, source_prefixes
 
 PAGE_SIZE = 200
+TEXTURES_METHOD = "Textures.GetTextures"
 
 Call = Callable[[str, Dict[str, Any]], Dict[str, Any]]
 # progress(label, fraction 0..1); may raise an exception to cancel
@@ -41,6 +42,22 @@ def make_call(execute: Callable[[str], str]) -> Call:
     return call
 
 
+def _append_new(
+    items: list[dict[str, Any]], seen_ids: set[Any], page: list[dict[str, Any]], id_key: str
+) -> int:
+    """Append the items of a page whose id was not seen yet; return how many were added."""
+    fresh = 0
+    for item in page:
+        ident = item.get(id_key)
+        if ident is not None:
+            if ident in seen_ids:
+                continue
+            seen_ids.add(ident)
+        items.append(item)
+        fresh += 1
+    return fresh
+
+
 def fetch_pages(
     call: Call,
     method: str,
@@ -58,15 +75,7 @@ def fetch_pages(
         result = call(method, page_params)
         page = result.get(result_key) or []
         total = int((result.get("limits") or {}).get("total", 0))
-        fresh = 0
-        for item in page:
-            ident = item.get(id_key)
-            if ident is not None:
-                if ident in seen_ids:
-                    continue
-                seen_ids.add(ident)
-            items.append(item)
-            fresh += 1
+        fresh = _append_new(items, seen_ids, page, id_key)
         start += len(page)
         if on_page:
             on_page(len(items), max(total, len(items)))
@@ -151,10 +160,10 @@ def fetch_textures(call: Call, progress: Progress) -> list[dict[str, Any]]:
     Textures.GetTextures does not accept `limits` on all Kodi versions, so it is not paged.
     If the `sizes` property is rejected, retry with the url only (sizes then count as 0).
     """
-    progress("Textures.GetTextures", 0.0)
+    progress(TEXTURES_METHOD, 0.0)
     try:
-        result = call("Textures.GetTextures", {"properties": ["url", "sizes"]})
+        result = call(TEXTURES_METHOD, {"properties": ["url", "sizes"]})
     except RpcError:
-        result = call("Textures.GetTextures", {"properties": ["url"]})
-    progress("Textures.GetTextures", 1.0)
+        result = call(TEXTURES_METHOD, {"properties": ["url"]})
+    progress(TEXTURES_METHOD, 1.0)
     return result.get("textures") or []

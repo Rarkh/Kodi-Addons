@@ -23,6 +23,10 @@ Every add-on in this repository has its own version and uses
 - Changes not yet released are collected under `[Unreleased]`. Entries name the add-on.
 
 ## [Unreleased]
+### Changed
+- `plugin.program.artlibcleanup`: internal refactoring for SonarQube (smaller functions, shared
+  constants), no change in behaviour.
+- `tools/build_repo.py`: the MD5 checksum is marked as not security-relevant (Kodi needs MD5).
 
 ## [repository.rarkh 1.0.1]
 ### Changed

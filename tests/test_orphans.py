@@ -168,7 +168,8 @@ def test_classify_protects_skin_and_addon_art():
 def test_finds_only_unreferenced_library_art():
     _, orphans = run_scan(make_fake())
     assert set(orphans) == {2, 5, 9, 11}
-    assert orphans[2].size == 2000 and orphans[2].category == VIDEO
+    assert orphans[2].size == 2000
+    assert orphans[2].category == VIDEO
     assert orphans[9].category == MUSIC
     assert orphans[11].category == VIDEO  # video@ thumbnail of a removed file
 
@@ -219,10 +220,12 @@ def test_paging_survives_server_that_ignores_limits(monkeypatch: pytest.MonkeyPa
 def test_make_call_reports_errors_and_bad_json():
     ok = library.make_call(lambda req: '{"id":1,"result":{"a":1}}')
     assert ok("X", {}) == {"a": 1}
+    failing = library.make_call(lambda req: '{"error":{"message":"nope"}}')
     with pytest.raises(RpcError, match="nope"):
-        library.make_call(lambda req: '{"error":{"message":"nope"}}')("X", {})
+        failing("X", {})
+    garbage = library.make_call(lambda req: "<html>")
     with pytest.raises(RpcError):
-        library.make_call(lambda req: "<html>")("X", {})
+        garbage("X", {})
 
 
 def test_textures_are_fetched_without_limits():

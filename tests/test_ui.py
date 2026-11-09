@@ -191,8 +191,10 @@ def test_scan_without_music_skips_music_category(ui: SimpleNamespace):
 
 def test_scan_cancel_closes_progress(ui: SimpleNamespace):
     ui.cancel_after = 1
+    call = make_call(lambda req: rpc_endpoint(ui.kodi, req))
+    log = Log(False)
     with pytest.raises(Cancelled):
-        scan(make_call(lambda req: rpc_endpoint(ui.kodi, req)), True, Log(False))
+        scan(call, True, log)
     assert ui.progress[0].closed
 
 

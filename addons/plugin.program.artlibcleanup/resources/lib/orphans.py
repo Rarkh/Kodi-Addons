@@ -13,6 +13,7 @@ from urllib.parse import unquote, urlsplit
 
 VIDEO = "video"
 MUSIC = "music"
+FANART_TV = "fanart.tv"  # serves both video and music art, decided by the URL path
 
 # A normalised URL: (type of the image:// wrapper or "", key)
 NormUrl = Tuple[str, str]  # noqa: UP006  (Kodi 19 may run on Python 3.8)
@@ -31,7 +32,7 @@ _VIDEO_HOSTS = (
     "artworks.thetvdb.com",
     "m.media-amazon.com",
     "media-imdb.com",
-    "fanart.tv",
+    FANART_TV,
     "trakt.tv",
 )
 _MUSIC_HOSTS = (
@@ -40,7 +41,7 @@ _MUSIC_HOSTS = (
     "archive.org",
     "lastfm.freetls.fastly.net",
     "last.fm",
-    "fanart.tv",
+    FANART_TV,
     "discogs.com",
     "musicbrainz.org",
 )
@@ -92,6 +93,30 @@ def _host_matches(host: str, suffixes: Iterable[str]) -> bool:
     return any(host == s or host.endswith("." + s) for s in suffixes)
 
 
+def _classify_web(key: str) -> str | None:
+    """Category of an http(s) image URL, decided by its host (None = unknown host)."""
+    parts = urlsplit(key)
+    host = parts.hostname or ""
+    if _host_matches(host, (FANART_TV,)):
+        return MUSIC if "/music/" in parts.path or "musiclabel" in parts.path else VIDEO
+    if _host_matches(host, _VIDEO_HOSTS):
+        return VIDEO
+    if _host_matches(host, _MUSIC_HOSTS):
+        return MUSIC
+    return None
+
+
+def _classify_local(
+    key: str, video_sources: Iterable[str], music_sources: Iterable[str]
+) -> str | None:
+    """Category of a local path, decided by the library sources it lies under."""
+    if _under(key, video_sources):
+        return VIDEO
+    if _under(key, music_sources):
+        return MUSIC
+    return None
+
+
 def classify(
     norm: NormUrl, video_sources: Iterable[str] = (), music_sources: Iterable[str] = ()
 ) -> str | None:
@@ -99,29 +124,13 @@ def classify(
     kind, key = norm
     if not key:
         return None
-    if kind == "video":
-        return VIDEO
-    if kind == "music":
-        return MUSIC
-    if kind:  # picturefolder, pictures, ...
-        return None
+    if kind:  # image:// wrapper: video@ / music@ are known, others (picturefolder, ...) are not
+        return kind if kind in (VIDEO, MUSIC) else None
     if key.startswith(_PROTECTED_PREFIXES) or any(part in key for part in _PROTECTED_PARTS):
         return None
     if key.startswith(("http://", "https://")):
-        parts = urlsplit(key)
-        host = parts.hostname or ""
-        if _host_matches(host, ("fanart.tv",)):
-            return MUSIC if "/music/" in parts.path or "musiclabel" in parts.path else VIDEO
-        if _host_matches(host, _VIDEO_HOSTS):
-            return VIDEO
-        if _host_matches(host, _MUSIC_HOSTS):
-            return MUSIC
-        return None
-    if _under(key, video_sources):
-        return VIDEO
-    if _under(key, music_sources):
-        return MUSIC
-    return None
+        return _classify_web(key)
+    return _classify_local(key, video_sources, music_sources)
 
 
 @dataclass(frozen=True)

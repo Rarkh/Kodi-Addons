@@ -147,7 +147,9 @@ def test_main_builds_zips_and_index(repo: Path, capsys: pytest.CaptureFixture[st
     assert (out / "zips" / "plugin.b" / "plugin.b-2.0.0.zip").is_file()
 
     printed = capsys.readouterr().out
-    assert "plugin.a" in printed and "2.0.0" in printed and "2 Addon(s)" in printed
+    assert "plugin.a" in printed
+    assert "2.0.0" in printed
+    assert "2 Addon(s)" in printed
 
 
 def test_main_fails_on_broken_addon(repo: Path, capsys: pytest.CaptureFixture[str]):
