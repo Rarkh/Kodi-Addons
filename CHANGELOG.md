@@ -32,6 +32,10 @@ Every add-on in this repository has its own version and uses
 ### Fixed
 - Sizes showed as 0 KB: the `size` in the texture database is a size class, not bytes. The size is now read from the cached file (`special://thumbnails/`).
 
+## [repository.rarkh 1.0.2]
+### Changed
+- New icon, cut from the fanart (the old one was a placeholder).
+
 ## [repository.rarkh 1.0.1]
 ### Changed
 - New fanart image.

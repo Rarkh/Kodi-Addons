@@ -60,7 +60,7 @@ be **public**.
 ## Install the repository in Kodi
 
 1. Download the ZIP:
-   <https://raw.githubusercontent.com/Rarkh/Kodi-Addons/main/repo/zips/repository.rarkh/repository.rarkh-1.0.1.zip>
+   <https://raw.githubusercontent.com/Rarkh/Kodi-Addons/main/repo/zips/repository.rarkh/repository.rarkh-1.0.2.zip>
 2. In Kodi: *Settings → Add-ons → Install from zip file* (allow "Unknown sources" if asked)
    and pick the ZIP.
 3. Then: *Add-ons → Install from repository → Rarkh Repository* and install the add-ons you
