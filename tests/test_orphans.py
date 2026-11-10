@@ -40,7 +40,6 @@ class FakeKodi:
         self.calls: list[str] = []
         self.removed: list[int] = []
         self.fail_on: str | None = None
-        self.reject_sizes = False
 
     KEYS = {
         "VideoLibrary.GetMovies": "movies",
@@ -73,8 +72,6 @@ class FakeKodi:
             # Like real Kodi: no `limits` support, everything in one answer
             if "limits" in params:
                 raise RpcError(f"{method}: Invalid params.")
-            if self.reject_sizes and "sizes" in params["properties"]:
-                raise RpcError(f"{method}: Invalid params.")
             return {"textures": items}
         lim = params["limits"]
         return {
@@ -98,20 +95,20 @@ def make_fake(**overrides: Any) -> FakeKodi:
         "AudioLibrary.GetAlbums": [{"albumid": 5, "art": {"thumb": wrap(ALBUM)}}],
     }
     textures = [
-        {"textureid": 1, "url": TMDB_POSTER, "sizes": [{"size": 1000}, {"size": 500}]},
-        {"textureid": 2, "url": TMDB_OLD, "sizes": [{"size": 2000}]},
-        {"textureid": 3, "url": ACTOR, "sizes": [{"size": 300}]},
-        {"textureid": 4, "url": "smb://nas/Filme/Here (2001)/fanart.jpg", "sizes": [{"size": 10}]},
-        {"textureid": 5, "url": LOCAL_OLD, "sizes": [{"size": 4000}]},
-        {"textureid": 6, "url": "special://skin/media/icon.png", "sizes": [{"size": 99}]},
-        {"textureid": 7, "url": "C:/Users/x/addons/plugin.video.foo/icon.png", "sizes": []},
-        {"textureid": 8, "url": ALBUM, "sizes": [{"size": 70}]},
-        {"textureid": 9, "url": ALBUM_OLD, "sizes": [{"size": 800}]},
-        {"textureid": 10, "url": "https://example.org/foreign-addon.jpg", "sizes": [{"size": 5}]},
+        {"textureid": 1, "url": TMDB_POSTER, "filesize": 1500},
+        {"textureid": 2, "url": TMDB_OLD, "filesize": 2000},
+        {"textureid": 3, "url": ACTOR, "filesize": 300},
+        {"textureid": 4, "url": "smb://nas/Filme/Here (2001)/fanart.jpg", "filesize": 10},
+        {"textureid": 5, "url": LOCAL_OLD, "filesize": 4000},
+        {"textureid": 6, "url": "special://skin/media/icon.png", "filesize": 99},
+        {"textureid": 7, "url": "C:/Users/x/addons/plugin.video.foo/icon.png", "filesize": 0},
+        {"textureid": 8, "url": ALBUM, "filesize": 70},
+        {"textureid": 9, "url": ALBUM_OLD, "filesize": 800},
+        {"textureid": 10, "url": "https://example.org/foreign-addon.jpg", "filesize": 5},
         {
             "textureid": 11,
             "url": wrap("smb://nas/Filme/Gone.mkv", "video"),
-            "sizes": [{"size": 60}],
+            "filesize": 60,
         },
     ]
     library_data.update(overrides)
@@ -233,11 +230,26 @@ def test_textures_are_fetched_without_limits():
     assert len(fetch_textures(fake, lambda label, fraction: None)) == 11
 
 
-def test_textures_fall_back_when_sizes_is_rejected():
-    fake = make_fake()
-    fake.reject_sizes = True
-    assert len(fetch_textures(fake, lambda label, fraction: None)) == 11
-    assert fake.calls.count("Textures.GetTextures") == 2
+def test_textures_request_cache_file_not_sizes():
+    calls: list[dict[str, Any]] = []
+
+    def call(method: str, params: dict[str, Any]) -> dict[str, Any]:
+        calls.append(params)
+        return {"textures": [{"textureid": 1, "url": "u", "cachedurl": "a/b.jpg"}]}
+
+    assert len(fetch_textures(call, lambda label, fraction: None)) == 1
+    assert calls == [{"properties": ["url", "cachedurl"]}]
+
+
+def test_sizes_come_from_the_size_lookup():
+    textures = [{"textureid": 1, "url": TMDB_OLD, "cachedurl": "a/b.jpg"}]
+    orphans = find_orphans(
+        textures,
+        [TMDB_POSTER],
+        reference_categories={VIDEO: 1},
+        size_of=lambda tex: 4242 if tex["cachedurl"] == "a/b.jpg" else 0,
+    )
+    assert [o.size for o in orphans] == [4242]
 
 
 def test_normalize_stops_after_five_wrapper_levels():

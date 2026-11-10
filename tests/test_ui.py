@@ -306,3 +306,27 @@ def test_run_summary_mentions_skipped_categories(ui: SimpleNamespace):
     run()
     assert ui.kodi.removed == [2, 5, 11]
     assert ui.dialog.oks[-1] == "S30027"
+
+
+def test_cache_file_size_reads_the_cached_file(monkeypatch: pytest.MonkeyPatch):
+    seen: list[str] = []
+
+    class FakeStat:
+        def __init__(self, path: str) -> None:
+            seen.append(path)
+
+        def st_size(self) -> int:
+            return 1234
+
+    monkeypatch.setattr(main.xbmcvfs, "Stat", FakeStat)
+    assert main.cache_file_size({"cachedurl": "a/b.jpg"}) == 1234
+    assert seen == ["special://thumbnails/a/b.jpg"]
+
+
+def test_cache_file_size_is_zero_without_file_or_on_error(monkeypatch: pytest.MonkeyPatch):
+    def broken(path: str) -> None:
+        raise OSError(path)
+
+    monkeypatch.setattr(main.xbmcvfs, "Stat", broken)
+    assert main.cache_file_size({}) == 0
+    assert main.cache_file_size({"cachedurl": "x.jpg"}) == 0

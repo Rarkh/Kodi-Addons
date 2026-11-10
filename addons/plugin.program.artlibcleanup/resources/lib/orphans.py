@@ -6,7 +6,7 @@ Plain Python without Kodi imports, so it can be tested.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Tuple
 from urllib.parse import unquote, urlsplit
@@ -141,8 +141,9 @@ class Texture:
     category: str
 
 
-def texture_size(texture: dict) -> int:
-    return sum(int(s.get("size", 0) or 0) for s in texture.get("sizes", []) or [])
+def default_size(texture: dict) -> int:
+    """File size of a texture; callers pass a real lookup (the cache file) as size_of."""
+    return int(texture.get("filesize", 0) or 0)
 
 
 def find_orphans(
@@ -153,6 +154,7 @@ def find_orphans(
     video_sources: Iterable[str] = (),
     music_sources: Iterable[str] = (),
     include_music: bool = True,
+    size_of: Callable[[dict], int] = default_size,
 ) -> list[Texture]:
     """Bestimmt verwaiste Texturen.
 
@@ -172,5 +174,5 @@ def find_orphans(
         category = classify(norm, video_src, music_src)
         if category is None or category not in active or norm in refs:
             continue
-        orphans.append(Texture(int(tex["textureid"]), url, texture_size(tex), category))
+        orphans.append(Texture(int(tex["textureid"]), url, size_of(tex), category))
     return orphans

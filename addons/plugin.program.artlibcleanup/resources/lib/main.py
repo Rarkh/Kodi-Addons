@@ -8,6 +8,7 @@ from typing import Any
 import xbmc
 import xbmcaddon
 import xbmcgui
+import xbmcvfs
 
 from resources.lib.library import (
     Call,
@@ -23,7 +24,7 @@ HEADING = ADDON.getAddonInfo("name")
 
 
 class Cancelled(Exception):
-    """Der Nutzer hat den Fortschrittsdialog abgebrochen."""
+    """The user cancelled the progress dialog."""
 
 
 def tr(string_id: int, *args: Any) -> str:
@@ -62,6 +63,17 @@ class ProgressDialog:
         self.dialog.close()
 
 
+def cache_file_size(texture: dict) -> int:
+    """Size in bytes of the cached file of a texture (0 if it is missing)."""
+    cached = texture.get("cachedurl")
+    if not cached:
+        return 0
+    try:
+        return int(xbmcvfs.Stat(f"special://thumbnails/{cached}").st_size())
+    except Exception:  # noqa: BLE001  (missing file or unsupported path: size unknown)
+        return 0
+
+
 def scan(call: Call, include_music: bool, log: Log) -> tuple[list[Texture], list[str]]:
     """Read library and cache; return (orphans, skipped categories)."""
     progress = ProgressDialog(tr(30011))
@@ -88,6 +100,7 @@ def scan(call: Call, include_music: bool, log: Log) -> tuple[list[Texture], list
         video_sources=collected.video_sources,
         music_sources=collected.music_sources,
         include_music=include_music,
+        size_of=cache_file_size,
     )
     return orphans, skipped
 

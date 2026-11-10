@@ -155,15 +155,12 @@ def collect_library(call: Call, include_music: bool, progress: Progress) -> Coll
 
 
 def fetch_textures(call: Call, progress: Progress) -> list[dict[str, Any]]:
-    """Fetch all cached textures in one call.
+    """Fetch all cached textures (url and cache file) in one call.
 
     Textures.GetTextures does not accept `limits` on all Kodi versions, so it is not paged.
-    If the `sizes` property is rejected, retry with the url only (sizes then count as 0).
+    The `sizes` property is not used: its `size` is a size class, not a file size in bytes.
     """
-    progress(TEXTURES_METHOD, 0.0)
-    try:
-        result = call(TEXTURES_METHOD, {"properties": ["url", "sizes"]})
-    except RpcError:
-        result = call(TEXTURES_METHOD, {"properties": ["url"]})
-    progress(TEXTURES_METHOD, 1.0)
+    progress("Textures.GetTextures", 0.0)
+    result = call("Textures.GetTextures", {"properties": ["url", "cachedurl"]})
+    progress("Textures.GetTextures", 1.0)
     return result.get("textures") or []

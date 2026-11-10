@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addons>
-<addon id="plugin.program.artlibcleanup" name="Art Library Cleanup" version="0.1.2" provider-name="Rarkh">
+<addon id="plugin.program.artlibcleanup" name="Art Library Cleanup" version="0.1.3" provider-name="Rarkh">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
     </requires>

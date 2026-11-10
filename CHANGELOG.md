@@ -28,6 +28,10 @@ Every add-on in this repository has its own version and uses
   constants), no change in behaviour.
 - `tools/build_repo.py`: the MD5 checksum is marked as not security-relevant (Kodi needs MD5).
 
+## [plugin.program.artlibcleanup 0.1.3]
+### Fixed
+- Sizes showed as 0 KB: the `size` in the texture database is a size class, not bytes. The size is now read from the cached file (`special://thumbnails/`).
+
 ## [repository.rarkh 1.0.1]
 ### Changed
 - New fanart image.
