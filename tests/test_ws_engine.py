@@ -658,3 +658,11 @@ def test_a_listed_file_teaches_the_path_and_retries_what_had_no_local_path(rig):
     assert "/storage/KODI/SERIES/Show/S01/E01.mkv" in phone.unapplied
     assert "/storage/KODI/SERIES/Show/S01/E01.mkv" not in phone.local.applied
     assert not phone.learn_path("nfs://nas/SERIES-USB/Show/S01/E01.mkv")  # translatable now
+
+
+def test_learning_a_known_path_again_changes_nothing(rig):
+    phone = rig.device("phone")
+    phone.sync()
+    record(phone, "nfs://nas/S/Show/E01.mkv", unmapped=True)
+    phone.remember_path("nfs://nas/S/Show/E01.mkv")
+    assert not phone.learn_path("nfs://nas/S/Show/E01.mkv")

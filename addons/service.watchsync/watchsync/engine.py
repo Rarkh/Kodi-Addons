@@ -442,6 +442,8 @@ class SyncEngine:
         """A file seen in the file view names a medium other devices wrote, and this device cannot
         translate that device's location yet: keep the path (one per location is enough) and try
         the entries again that had no local path. Returns whether something was learned."""
+        if path in self.local.own_paths:
+            return False
         for key in sorted(self._name_ids.get(file_name_key(path), ())):
             known = PathResolver(self.local.own_paths, [key]).resolve(key)
             if same_medium(key, path) and known is None:

@@ -24,11 +24,13 @@ Every add-on in this repository has its own version and uses
 
 ## [Unreleased]
 ### Fixed
-- `service.watchsync` 0.3.1 (test build): a device could not take over the state of files that another
+- `service.watchsync` 0.3.1/0.3.2 (test builds): a device could not take over the state of files that another
   device plays from a location it cannot translate (e.g. a tablet's local `/storage/...` path seen by
   a phone that only plays from the NAS): nothing was written and the entry was never tried again.
   Files seen in a shown folder now teach the path (one per location), and entries without a
-  local path are tried again after that.
+  local path are tried again after that. A device's own local path (e.g. `/storage/1234-5678/...`)
+  is its own location now, so it resolves to itself and no longer triggers learning and retries
+  at every sync.
 
 ### Added
 - `repository.rarkh.test` 1.0.0: repository add-on of a test channel (branch `dev`, folder
