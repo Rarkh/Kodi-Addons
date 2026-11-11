@@ -23,6 +23,10 @@ Every add-on in this repository has its own version and uses
 - Changes not yet released are collected under `[Unreleased]`. Entries name the add-on.
 
 ## [Unreleased]
+### Added
+- `repository.rarkh.test` 1.0.0: repository add-on of a test channel (branch `dev`, folder
+  `repo-test/`). `tools/build_repo.py --channel test` builds it; the release channel leaves it out.
+
 ### Changed
 - `plugin.program.artlibcleanup`: internal refactoring for SonarQube (smaller functions, shared
   constants), no change in behaviour.

@@ -6,9 +6,11 @@ Mono-repo for my Kodi add-ons. `tools/build_repo.py` builds an installable Kodi 
 ```
 addons/                  source code, one folder per add-on
   repository.rarkh/      the repository add-on (install once in Kodi)
+  repository.rarkh.test/ repository add-on of the test channel (test devices only)
   plugin.program.artlibcleanup/
   service.watchsync/
 repo/                    generated and checked in: addons.xml, addons.xml.md5, zips/
+repo-test/               same for the test channel (only on the branch "dev")
 tools/build_repo.py      builds ZIPs, addons.xml and the checksum
 tests/                   unit tests
 ```
@@ -65,6 +67,37 @@ be **public**.
    and pick the ZIP.
 3. Then: *Add-ons → Install from repository → Rarkh Repository* and install the add-ons you
    want. Updates arrive automatically.
+
+## Test channel (test deploys without touching releases)
+
+A second repository add-on, `repository.rarkh.test`, points to the branch `dev` and the folder
+`repo-test/`. Test devices get pre-releases from there; the release repository on `main` stays
+untouched.
+
+One-time setup per test device:
+
+1. Download the ZIP (or put it on the NAS and install from there):
+   <https://raw.githubusercontent.com/Rarkh/Kodi-Addons/dev/repo-test/zips/repository.rarkh.test/repository.rarkh.test-1.0.0.zip>
+2. *Settings → Add-ons → Install from zip file* and pick it.
+3. *Install from repository → Rarkh Repository (Test)* and install the add-on. Updates follow
+   automatically.
+
+Use only **one** channel per device. Do not install `repository.rarkh` on a test device, or
+Kodi takes whichever channel offers the higher version.
+
+Test deploy (the branch `dev` must be created once with `git switch -c dev`):
+
+```
+git switch dev
+# raise the version in addons/<id>/addon.xml (Kodi updates only to a higher version)
+python tools/build_repo.py --channel test
+git add -A
+git commit -m "Test build <addon> <version>"
+git push origin dev
+```
+
+Release: merge `dev` into `main`, then build the release channel (`python tools/build_repo.py`).
+`repo-test/` belongs to `dev`; do not merge it into `main` (or delete it before the release).
 
 ## Development tests with a junction
 

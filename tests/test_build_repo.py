@@ -42,6 +42,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(br, "ADDONS_DIR", addons)
     monkeypatch.setattr(br, "REPO_DIR", repo_dir)
     monkeypatch.setattr(br, "ZIPS_DIR", repo_dir / "zips")
+    monkeypatch.setattr(br, "TEST_REPO_DIR", tmp_path / "repo-test")
     return tmp_path
 
 
@@ -138,7 +139,7 @@ def test_human_size_units():
 def test_main_builds_zips_and_index(repo: Path, capsys: pytest.CaptureFixture[str]):
     write_addon(repo / "addons", "plugin.a", "1.0.0")
     write_addon(repo / "addons", "plugin.b", "2.0.0")
-    assert br.main() == 0
+    assert br.main([]) == 0
 
     out = repo / "repo"
     data = (out / "addons.xml").read_bytes()
@@ -152,31 +153,56 @@ def test_main_builds_zips_and_index(repo: Path, capsys: pytest.CaptureFixture[st
     assert "2 Addon(s)" in printed
 
 
+def test_release_channel_leaves_out_the_test_repository(repo: Path):
+    write_addon(repo / "addons", "plugin.a")
+    write_addon(repo / "addons", "repository.rarkh.test")
+    assert br.main([]) == 0
+    ids = [a.get("id") for a in ET.fromstring((repo / "repo" / "addons.xml").read_bytes())]
+    assert ids == ["plugin.a"]
+    assert not (repo / "repo-test").exists()
+
+
+def test_test_channel_builds_everything_into_repo_test(
+    repo: Path, capsys: pytest.CaptureFixture[str]
+):
+    write_addon(repo / "addons", "plugin.a")
+    write_addon(repo / "addons", "repository.rarkh.test", "1.0.0")
+    assert br.main(["--channel", "test"]) == 0
+    out = repo / "repo-test"
+    data = (out / "addons.xml").read_bytes()
+    assert [a.get("id") for a in ET.fromstring(data)] == ["plugin.a", "repository.rarkh.test"]
+    assert (out / "addons.xml.md5").read_text(encoding="ascii") == hashlib.md5(data).hexdigest()
+    assert (out / "zips" / "plugin.a" / "plugin.a-1.0.0.zip").is_file()
+    assert not (repo / "repo").exists()
+    assert "repo-test/addons.xml" in capsys.readouterr().out
+
+
 def test_main_fails_on_broken_addon(repo: Path, capsys: pytest.CaptureFixture[str]):
     write_addon(repo / "addons", "plugin.a")
     (repo / "addons" / "plugin.a" / "addon.xml").write_text("<addon", encoding="utf-8")
-    assert br.main() == 1
+    assert br.main([]) == 1
     assert "ERROR" in capsys.readouterr().err
 
 
 def test_main_fails_on_wrong_folder_name(repo: Path, capsys: pytest.CaptureFixture[str]):
     write_addon(repo / "addons", "plugin.a")
     (repo / "addons" / "plugin.a").rename(repo / "addons" / "plugin.z")
-    assert br.main() == 1
+    assert br.main([]) == 1
     assert "does not match" in capsys.readouterr().err
 
 
 def test_main_fails_without_addons(repo: Path, capsys: pytest.CaptureFixture[str]):
-    assert br.main() == 1
+    assert br.main([]) == 1
     assert "no add-ons" in capsys.readouterr().err
 
 
-def test_script_runs_as_command_line_tool(tmp_path: Path):
+def test_script_runs_as_command_line_tool(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Run the real script file, but with __file__ in a temporary tree.
 
     ROOT is derived from __file__, so the real repo/ stays untouched while the
     file's own code (including the __main__ block) is executed and measured.
     """
+    monkeypatch.setattr("sys.argv", ["build_repo.py"])
     write_addon(tmp_path / "addons", "plugin.a")
     code = compile(SCRIPT.read_text(encoding="utf-8"), str(SCRIPT), "exec")
     fake_file = tmp_path / "tools" / "build_repo.py"

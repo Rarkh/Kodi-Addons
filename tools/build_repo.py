@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """Build the installable Kodi repository in repo/ from addons/.
 
-Result:
-    repo/zips/<id>/<id>-<version>.zip   (folder <id>/ as the ZIP root)
-    repo/zips/<id>/icon.png, fanart.jpg (if present)
-    repo/addons.xml
-    repo/addons.xml.md5
+Usage:
+    python tools/build_repo.py                 release channel -> repo/
+    python tools/build_repo.py --channel test  test channel    -> repo-test/ (branch "dev")
+
+Result (per channel folder):
+    zips/<id>/<id>-<version>.zip   (folder <id>/ as the ZIP root)
+    zips/<id>/icon.png, fanart.jpg (if present)
+    addons.xml
+    addons.xml.md5
+
+The release channel leaves out the test repository add-on; the test channel contains everything.
 
 Old ZIP versions are kept (rollback); ZIPs of the current version are rebuilt.
 Standard library only.
@@ -13,6 +19,7 @@ Standard library only.
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import shutil
 import sys
@@ -25,6 +32,8 @@ ROOT = Path(__file__).resolve().parent.parent
 ADDONS_DIR = ROOT / "addons"
 REPO_DIR = ROOT / "repo"
 ZIPS_DIR = REPO_DIR / "zips"
+TEST_REPO_DIR = ROOT / "repo-test"
+TEST_ONLY = {"repository.rarkh.test"}
 
 EXCLUDE_DIRS = {"__pycache__", ".git", ".vscode", ".pytest_cache", ".ruff_cache"}
 EXCLUDE_SUFFIXES = {".pyc", ".pyo"}
@@ -68,8 +77,8 @@ def included_files(addon_dir: Path):
         yield path, rel
 
 
-def build_zip(addon_dir: Path, addon_id: str, version: str) -> Path:
-    out_dir = ZIPS_DIR / addon_id
+def build_zip(addon_dir: Path, addon_id: str, version: str, zips_dir: Path | None = None) -> Path:
+    out_dir = (zips_dir or ZIPS_DIR) / addon_id
     out_dir.mkdir(parents=True, exist_ok=True)
     zip_path = out_dir / f"{addon_id}-{version}.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -102,35 +111,45 @@ def human_size(size: int) -> str:
     return f"{size / 1024:.1f} KB" if size < 1024 * 1024 else f"{size / 1024 / 1024:.2f} MB"
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Build the Kodi repository.")
+    parser.add_argument("--channel", choices=("release", "test"), default="release")
+    test = parser.parse_args(argv).channel == "test"
+    repo_dir = TEST_REPO_DIR if test else REPO_DIR
     built: list[Built] = []
     for addon_dir in find_addon_dirs():
+        if not test and addon_dir.name in TEST_ONLY:
+            continue
         try:
             addon_id, version, text = read_addon_xml(addon_dir)
         except (ValueError, ET.ParseError) as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 1
-        built.append(Built(addon_id, version, build_zip(addon_dir, addon_id, version), text))
+        built.append(
+            Built(
+                addon_id, version, build_zip(addon_dir, addon_id, version, repo_dir / "zips"), text
+            )
+        )
 
     if not built:
         print("ERROR: no add-ons found in addons/", file=sys.stderr)
         return 1
 
     data = render_addons_xml([b.xml_text for b in built])
-    REPO_DIR.mkdir(exist_ok=True)
-    (REPO_DIR / "addons.xml").write_bytes(data)
+    repo_dir.mkdir(exist_ok=True)
+    (repo_dir / "addons.xml").write_bytes(data)
     # MD5 is the checksum format Kodi expects in addons.xml.md5, not a security measure
     checksum = hashlib.md5(data, usedforsecurity=False).hexdigest()
-    (REPO_DIR / "addons.xml.md5").write_text(checksum, encoding="ascii")
+    (repo_dir / "addons.xml.md5").write_text(checksum, encoding="ascii")
 
     print(f"{'Addon':<36}{'Version':<10}{'ZIP size':>12}")
     print("-" * 58)
     for b in built:
         print(f"{b.addon_id:<36}{b.version:<10}{human_size(b.zip_path.stat().st_size):>12}")
     print("-" * 58)
-    print(f"{len(built)} Addon(s) -> repo/addons.xml, repo/addons.xml.md5")
+    print(f"{len(built)} Addon(s) -> {repo_dir.name}/addons.xml, {repo_dir.name}/addons.xml.md5")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
