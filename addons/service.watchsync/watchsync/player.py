@@ -15,9 +15,11 @@ from .logger import DEBUG, INFO, WARNING
 from .mediaid import Fingerprinter, Mapping, is_trackable, to_media_id
 
 # Below this position no progress is written: a playback that starts at 0 (a quick look at a
-# file) must not overwrite the saved state of the medium with "0". Only a stop right after a
-# deliberate start from the beginning (a saved position existed) clears it: a "reset" event.
-QUIET_START_S = 5.0
+# file) must not overwrite the saved state of the medium with "0". Only a stop right at the
+# start of a medium that had a saved position clears it: a "reset" event.
+QUIET_START_S = 1.0
+# Stopping within this many seconds of the start clears a saved position (even after a jump)
+QUICK_STOP_S = 1.0
 RESUME_TOLERANCE_S = 5.0
 RESUME_AUTO, RESUME_ASK = 0, 1
 
@@ -31,9 +33,9 @@ class Current:
     position: float
     playcount: int
     watched: bool = False
-    # a saved position existed but the playback began at the start (deliberately: stopping
-    # right away then clears the saved position)
-    restarted: bool = False
+    # a position was saved for this medium: stopping right away clears it
+    had_saved: bool = False
+    started_at: float = 0.0
 
 
 class Tracker:
@@ -68,16 +70,13 @@ class Tracker:
         cur = self.current = Current(
             ref.id, ref.unmapped, fp, duration, position, previous.playcount if previous else 0
         )
+        cur.started_at = self.engine.mono()
         if ref.unmapped:
             self.engine.remember_path(path)
             self.log(f"No path mapping for {ref.id}: matched by file name and folders", DEBUG)
         if previous:
             self._maybe_resume(cur, previous)
-            cur.restarted = (
-                previous.type == "progress"
-                and previous.position_s > RESUME_TOLERANCE_S
-                and cur.position <= RESUME_TOLERANCE_S
-            )
+            cur.had_saved = previous.type == "progress" and previous.position_s > RESUME_TOLERANCE_S
 
     def _maybe_resume(self, cur: Current, previous: Event) -> None:
         """Fallback: jump to the position another device saved, if it is the newest state.
@@ -145,11 +144,16 @@ class Tracker:
             return
         if self._ratio(cur) >= self.threshold:
             self._mark_watched(cur)
+        elif cur.had_saved and self._quick_stop(cur):
+            self._record(cur, "reset", True)
         elif cur.position < QUIET_START_S:
-            if cur.restarted:
-                self._record(cur, "reset", True)
+            pass  # a quick look: the saved state stays
         else:
             self._record(cur, "progress", True)
+
+    def _quick_stop(self, cur: Current) -> bool:
+        """Stopped right at the start (position, or time since the start even after a jump)."""
+        return cur.position < QUIET_START_S or self.engine.mono() - cur.started_at < QUICK_STOP_S
 
     def ended(self) -> None:
         cur, self.current = self.current, None

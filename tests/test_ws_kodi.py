@@ -497,26 +497,21 @@ def test_progress_pause_and_stop_events(env):
     assert env.tracker.current is None
 
 
-def test_a_quick_look_at_a_file_does_not_overwrite_the_saved_position(env):
-    """Playback that starts at 0 and stops within seconds (resume not applied, a mis-click)
-    must not replace the position another playback saved with 0."""
-    put_foreign_progress(env)
-    saved = env.engine.lookup("Filme/A.mkv", None)
+def test_a_quick_look_at_a_file_without_a_saved_position_writes_nothing(env):
     env.tracker.started(PATH, 0.0, 7000.0)
-    env.tracker.tick(0.1, 7000.0)
-    env.tracker.paused(0.1)
-    env.tracker.tick(2.0, 7000.0)
+    env.tracker.tick(0.5, 7000.0)
+    env.tracker.paused(0.5)
     env.tracker.stopped()
     assert env.events() == []
-    assert env.engine.lookup("Filme/A.mkv", None) == saved
 
 
-def test_stopping_right_after_a_deliberate_start_from_the_beginning_clears_the_position():
-    """A saved position existed, the user said no to jumping there and stops at once."""
-    env = Env(Rig(), mode=1, answer=False)
+def test_stopping_right_at_the_start_clears_the_saved_position(env):
+    """Saved position, automatic jump to it, and a stop within a second of the start."""
     put_foreign_progress(env)
     env.tracker.started(PATH, 0.0, 7000.0)
-    env.tracker.tick(1.0, 7000.0)
+    assert env.seeks == [600.0]
+    env.tracker.tick(600.5, 7000.0)
+    env.rig.clock.advance(0.5)
     env.tracker.stopped()
     last = env.events()[-1]
     assert (last.type, last.position_s) == ("reset", 0.0)
@@ -524,20 +519,24 @@ def test_stopping_right_after_a_deliberate_start_from_the_beginning_clears_the_p
     assert state is not None and state.type == "reset"
 
 
-def test_stopping_a_little_later_after_starting_from_the_beginning_is_normal_progress():
+def test_stopping_at_the_start_of_a_playback_from_the_beginning_clears_it_too():
+    env = Env(Rig(), mode=1, answer=False)  # the user declined the jump
+    put_foreign_progress(env)
+    env.tracker.started(PATH, 0.0, 7000.0)
+    env.rig.clock.advance(5)
+    env.tracker.tick(0.5, 7000.0)
+    env.tracker.stopped()
+    assert env.events()[-1].type == "reset"
+
+
+def test_stopping_later_keeps_the_progress():
     env = Env(Rig(), mode=1, answer=False)
     put_foreign_progress(env)
     env.tracker.started(PATH, 0.0, 7000.0)
     env.tracker.tick(20.0, 7000.0)
+    env.rig.clock.advance(20)
     env.tracker.stopped()
     assert {(e.type, e.position_s) for e in env.events()} == {("progress", 20.0)}
-
-
-def test_a_quick_stop_without_saved_position_writes_nothing(env):
-    env.tracker.started(PATH, 0.0, 7000.0)
-    env.tracker.tick(1.0, 7000.0)
-    env.tracker.stopped()
-    assert env.events() == []
 
 
 def test_progress_is_recorded_from_five_seconds_on(env):
