@@ -23,6 +23,7 @@ from .events import (
     parse_filename,
 )
 from .logger import DEBUG, INFO, WARNING
+from .mediaid import same_medium
 from .merge import filter_future, merge
 from .store import LocalState, StateStore
 
@@ -343,11 +344,16 @@ class SyncEngine:
         return self.sync()
 
     def lookup(self, media_id: str, fp: str | None) -> Event | None:
-        """Effective state of a medium: by id, otherwise by fingerprint."""
+        """Effective state of a medium: by id, by fingerprint, otherwise by the same file name
+        and folders under another path (another device may reach the file another way)."""
         event = self.state.get(media_id)
-        if event or not fp:
+        if event:
             return event
-        return next((e for e in self.state.values() if e.fp == fp), None)
+        if fp:
+            event = next((e for e in self.state.values() if e.fp == fp), None)
+            if event:
+                return event
+        return next((e for e in self.state.values() if same_medium(e.media_id, media_id)), None)
 
     def status(self) -> dict[str, Any]:
         return {

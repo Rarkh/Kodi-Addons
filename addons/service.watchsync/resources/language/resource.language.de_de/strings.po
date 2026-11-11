@@ -68,8 +68,8 @@ msgid "Erweitert"
 msgstr "Erweitert"
 
 msgctxt "#30022"
-msgid "Pfad-Mappings (Präfix oder Präfix=>Basis, getrennt durch |)"
-msgstr "Pfad-Mappings (Präfix oder Präfix=>Basis, getrennt durch |)"
+msgid "Pfad-Mappings, optional (Präfix oder Präfix=>Basis, getrennt durch |)"
+msgstr "Pfad-Mappings, optional (Präfix oder Präfix=>Basis, getrennt durch |)"
 
 msgctxt "#30030"
 msgid "NAS-Verbindung testen"

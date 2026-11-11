@@ -32,7 +32,7 @@ Every add-on in this repository has its own version and uses
   UTC timestamp, applied to Kodi's database only when newer than what was applied before, with
   echo suppression, capture of manual watched/unwatched marks, resume point applied in advance
   and a fallback seek. Settings, program menu, path mappings, offline queue, local cache.
-  Test build 0.2.5 on the branch `dev`; not released on `main` yet.
+  Test build 0.2.6 on the branch `dev`; not released on `main` yet.
   New menu/settings action "Check for updates" (Kodi refreshes its repositories at once).
   New action "Write test (diagnosis)": tries several file names and write modes in the storage
   location and shows what Kodi answers.
@@ -41,6 +41,8 @@ Every add-on in this repository has its own version and uses
   Files are read in chunks until the end instead of trusting the size the share reports (Android
   NFS returned empty files), and a file that looks empty is retried. A nonsense NAS file time
   (seen: 3.6e18) no longer triggers the clock warning.
+  Media are matched automatically across devices: by fingerprint, otherwise by file name and last
+  folders (protocol, host, share, drive and letter case ignored). Path mappings are optional now.
   Writing waits for NFS attributes to settle before it counts a read-back as failed, and the
   error says whether the write was refused or what was read back.
 

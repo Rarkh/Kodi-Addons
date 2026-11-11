@@ -140,6 +140,24 @@ def test_library_item_gets_playcount_and_resume(kodi, clock):
     assert applied["Filme/A.mkv"]["ts"] == event.ts and applied["Filme/A.mkv"]["ok"]
 
 
+def test_item_is_found_without_mappings_when_another_device_uses_another_path(kodi, clock):
+    """The tablet plays over SMB with other letter case; this device has the library over NFS."""
+    kodi.movies = [
+        {"movieid": 5, "file": "nfs://192.168.0.5/RAID5/SERIES/Show/Season 01/Pilot.S01E01.mkv"}
+    ]
+    kodi.movies.append(
+        {"movieid": 6, "file": "nfs://192.168.0.5/RAID5/SERIES/Show/Season 01/Other.mkv"}
+    )
+    applier = KodiApplier(kodi, [], lambda: clock[0], lambda msg, level=1: None)
+    foreign = "smb://nas/RAID5/series/show/season 01/pilot.s01e01.mkv"
+    applied: dict = {}
+    assert applier.apply([ev(media=foreign, position_s=60.0)], applied) == 1
+    assert kodi.sets()[0][1]["movieid"] == 5
+    stranger = ev(media="smb://nas/RAID5/SERIES/Other Show/Season 01/Pilot.S01E01.mkv")
+    kodi.calls.clear()
+    assert applier.apply([stranger], applied) == 0 and kodi.sets() == []
+
+
 def test_only_entries_newer_than_the_applied_state_are_written(kodi, clock):
     applier, _ = make_applier(kodi, clock)
     applied = {"Filme/A.mkv": applied_entry(ev(ts="2026-11-10T12:00:00.000Z"))}
@@ -466,6 +484,19 @@ def put_foreign_progress(env: Env, device: str = "a", **kw: Any) -> None:
     other.sync()
     record(other, **{"position_s": 600.0, **kw})
     env.engine.sync()
+
+
+def test_state_of_another_device_is_found_by_file_name_and_folders(env):
+    """No fingerprint match and another path: the last folders and the file name still match."""
+    other = env.rig.device("a")
+    other.sync()
+    record(other, media="smb://nas/RAID5/filme/A.mkv", position_s=500.0)
+    env.engine.sync()
+    mine = "nfs://elsewhere/RAID5/Filme/A.mkv"
+    found = env.engine.lookup(mine, None)
+    assert found is not None and found.position_s == 500.0
+    assert env.engine.lookup(mine, "s=1;h=unknown;") == found
+    assert env.engine.lookup("nfs://elsewhere/RAID5/Other/A.mkv", None) is None
 
 
 def test_newer_position_of_another_device_is_a_fallback_seek(env):

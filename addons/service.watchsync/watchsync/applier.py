@@ -11,7 +11,14 @@ from typing import Any, Callable, Dict, Iterable, NamedTuple
 
 from .events import Event, parse_ts
 from .logger import DEBUG, INFO, WARNING
-from .mediaid import Mapping, from_media_id, is_trackable, to_media_id
+from .mediaid import (
+    Mapping,
+    file_name_key,
+    from_media_id,
+    is_trackable,
+    same_medium,
+    to_media_id,
+)
 
 Rpc = Callable[[str, Dict[str, Any]], Dict[str, Any]]
 Applied = Dict[str, Dict[str, Any]]
@@ -143,6 +150,21 @@ class KodiApplier:
                     index[to_media_id(path, self.mappings).id] = (kind, item[kind.id_key])
         return index, complete
 
+    @staticmethod
+    def _find_target(
+        index: dict[str, tuple[Kind, int]], by_name: dict[str, list[str]], media_id: str
+    ) -> tuple[Kind, int] | None:
+        """The library item of a medium: same id, otherwise the same file under another path.
+
+        Other devices reach the same file by another protocol, host or drive, so without a path
+        mapping the ids differ; the last folders and the file name identify it."""
+        if media_id in index:
+            return index[media_id]
+        for candidate in by_name.get(file_name_key(media_id), ()):
+            if same_medium(candidate, media_id):
+                return index[candidate]
+        return None
+
     def _apply_library(self, kind: Kind, dbid: int, event: Event) -> None:
         values = details(event)
         if "playcount" in values:
@@ -175,9 +197,12 @@ class KodiApplier:
         if not pending:
             return 0
         index, complete = self._library_index()
+        by_name: dict[str, list[str]] = {}
+        for media_id in index:
+            by_name.setdefault(file_name_key(media_id), []).append(media_id)
         done = 0
         for event in pending:
-            target = index.get(event.media_id)
+            target = self._find_target(index, by_name, event.media_id)
             if not target and not complete:
                 continue  # try again at the next sync
             try:

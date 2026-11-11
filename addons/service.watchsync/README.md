@@ -61,24 +61,35 @@ continues after everything of its own it finds on the NAS.
 | `player`     | `xbmc.Player` adapter and the playback tracker                          |
 | `runtime`    | the service loop; `menu` is the program add-on entry                    |
 
-## Media id and path mappings
+## Media identification (automatic) and path mappings (optional)
 
-`nfs://192.168.178.57/RAID5/Filme/Alien.mkv`, `R:\Filme\Alien.mkv` and
-`/media/nas/Filme/Alien.mkv` should all become `Filme/Alien.mkv`. For that every device lists the
-beginnings of the paths it sees:
+No setup is needed. The same file looks different on every device (`nfs://192.168.178.57/RAID5/Filme/Alien.mkv`,
+`smb://nas/RAID5/Filme/Alien.mkv`, `R:\Filme\Alien.mkv`, `/media/nas/Filme/Alien.mkv`), so a
+medium is recognised in three steps:
+
+1. **Fingerprint** (size plus SHA-1 of the first and last 64 KB, taken when a playback starts):
+   events with the same fingerprint are the same medium, even under another path or name.
+2. **File name and last folders:** protocol, host, share and drive letter are ignored, the
+   comparison is case-insensitive, and the last up to three parts (`Show/Season 01/E01.mkv`) must
+   agree. The file name alone never matches; at least the file name and its folder are needed.
+   This is how a library item on this device is found for a state written by another device.
+3. **Path mapping (optional):** if a share is laid out differently on two devices so that step 2
+   cannot work, list the beginnings of the paths this device sees; the longest prefix wins:
 
 ```
 nfs://192.168.178.57/RAID5/        on the Android box
 R:\                                on Windows
-/media/nas/                        on Linux
 nfs://192.168.178.57/RAID5/Serien/=>Series      optional: "prefix=>base" puts a base in front
 ```
 
-Entries are separated by `|` in the setting (or edit them in the menu *Edit path mappings*).
-The longest matching prefix wins, the comparison ignores case, URL escapes are decoded and
-credentials (`smb://user:pw@`) are never stored. Without a matching mapping the complete path is
-used and the event gets `"unmapped": true` (log and status show how many such media exist; they
-only match on devices that see the identical path). The file name alone is never the id.
+Mapped paths turn into the same id (`Filme/Alien.mkv`) on every device. Entries are separated by
+`|` in the setting (or edit them in the menu *Edit path mappings*). Credentials
+(`smb://user:pw@`) are never stored and URL escapes are decoded. Without a mapping the event
+carries the full path as id and `"unmapped": true`; this is normal and works through steps 1 and 2.
+
+Limit of step 2: when a share has the same folders but another share name on two devices **and**
+the file lies only one folder below the share, the share name counts as a third part and the
+files do not match (the fingerprint still does once both devices played the file).
 
 ## What happens on a device
 
@@ -158,8 +169,7 @@ suppression, "NAS newer than applied" and "defer while playing" with mock timest
 ### Trying it with two real Kodi devices
 
 1. Install the add-on on both, give each a different device name and the **same** storage
-   location; set the path mappings so that both see the same `media.id` (status shows media
-   without mapping). *Test NAS connection* must succeed on both.
+   location; *Test NAS connection* must succeed on both. Path mappings are not needed.
 2. Play a movie from the share on device A for a minute, pause. On B: within 30 s the resume
    point appears (library item) or the fallback seek happens when starting the file.
 3. Mark something watched on B; A shows it after the next sync. Mark it unwatched on A again.

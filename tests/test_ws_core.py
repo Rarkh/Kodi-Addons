@@ -334,3 +334,31 @@ def test_events_far_in_the_future_are_ignored():
     fine = _event(ts="2026-01-02T11:00:00.000Z")
     broken = _event(device="b", ts="2026-01-05T00:00:00.000Z")
     assert filter_future([fine, broken], now) == ([fine], [broken])
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "same"),
+    [
+        (
+            "nfs://192.168.0.5/RAID5/SERIES/Show/S01/E01.mkv",
+            "smb://nas/RAID5/series/show/s01/e01.MKV",
+            True,
+        ),
+        (r"R:\SERIES\Show\S01\E01.mkv", "nfs://nas/RAID5/SERIES/Show/S01/E01.mkv", True),
+        ("Filme/Alien.mkv", "nfs://nas/RAID5/Filme/Alien.mkv", True),
+        ("nfs://nas/A/Show/S01/E01.mkv", "nfs://nas/A/Other/S01/E01.mkv", False),
+        ("smb://nas/RAID5/film.mkv", "nfs://192.168.0.5/RAID5/Film.mkv", True),
+        ("R:\film.mkv", "nfs://nas/RAID5/film.mkv", False),
+        ("nfs://nas/Alien.mkv", "nfs://nas/Filme/Alien.mkv", False),
+        ("Alien.mkv", "nfs://nas/Filme/Alien.mkv", False),
+        ("", "Filme/Alien.mkv", False),
+    ],
+)
+def test_same_medium_ignores_protocol_host_share_and_case(first, second, same):
+    assert mediaid.same_medium(first, second) is same
+    assert mediaid.same_medium(second, first) is same
+
+
+def test_file_name_key():
+    assert mediaid.file_name_key("smb://nas/Show/S01/E01.MKV") == "e01.mkv"
+    assert mediaid.file_name_key("") == ""

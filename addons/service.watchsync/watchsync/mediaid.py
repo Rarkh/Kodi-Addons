@@ -11,6 +11,8 @@ from urllib.parse import unquote
 CHUNK = 64 * 1024
 MAPPING_SEPARATOR = "|"
 ARROW = "=>"
+MATCH_DEPTH = 3
+MIN_MATCH_PARTS = 2
 
 # Paths that are not files on a share: nothing to identify, nothing to sync
 UNTRACKED_SCHEMES = (
@@ -26,6 +28,7 @@ UNTRACKED_SCHEMES = (
     "upnp://",
     "special://",
 )
+_LOCATION = re.compile(r"^(?:[a-z][a-z0-9+.-]*://[^/]*/|[a-z]:/)")
 _CREDENTIALS = re.compile(r"^([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@]*@")
 
 
@@ -100,6 +103,28 @@ def from_media_id(media_id: str, mappings: list[Mapping]) -> str | None:
             rest = media_id[len(mapping.base) :]
             return mapping.raw + (rest.replace("/", "\\") if "\\" in mapping.raw else rest)
     return None
+
+
+def _parts(media_id: str) -> list[str]:
+    """Folders and file name, lower case, without protocol, host or drive letter."""
+    return [part for part in _LOCATION.sub("", normalize_path(media_id).lower()).split("/") if part]
+
+
+def file_name_key(media_id: str) -> str:
+    """Lower-case file name of an id or path: where candidates for same_medium are looked up."""
+    parts = _parts(media_id)
+    return parts[-1] if parts else ""
+
+
+def same_medium(first: str, second: str) -> bool:
+    """Do two ids or paths name the same file, whatever protocol, host or share they use?
+
+    The last folders and the file name decide (up to MATCH_DEPTH parts, case-insensitive), at
+    least the file name and its folder. The file name alone never matches.
+    """
+    one, two = _parts(first), _parts(second)
+    depth = min(len(one), len(two), MATCH_DEPTH)
+    return depth >= MIN_MATCH_PARTS and one[-depth:] == two[-depth:]
 
 
 def fingerprint(file: Any) -> str | None:

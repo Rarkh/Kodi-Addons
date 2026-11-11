@@ -11,7 +11,7 @@ import xbmc
 from .applier import is_applied
 from .engine import SyncEngine
 from .events import Event
-from .logger import INFO, WARNING
+from .logger import DEBUG, INFO, WARNING
 from .mediaid import Fingerprinter, Mapping, is_trackable, to_media_id
 
 RESET_BELOW_S = 5.0
@@ -63,7 +63,7 @@ class Tracker:
             ref.id, ref.unmapped, fp, duration, position, previous.playcount if previous else 0
         )
         if ref.unmapped:
-            self.log(f"No path mapping for {ref.id}: the full path is used as id", WARNING)
+            self.log(f"No path mapping for {ref.id}: matched by file name and folders", DEBUG)
         if previous:
             self._maybe_resume(cur, previous)
 

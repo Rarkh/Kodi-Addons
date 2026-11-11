@@ -68,8 +68,8 @@ msgid "Advanced"
 msgstr "Advanced"
 
 msgctxt "#30022"
-msgid "Path mappings (prefix or prefix=>base, separated by |)"
-msgstr "Path mappings (prefix or prefix=>base, separated by |)"
+msgid "Path mappings, optional (prefix or prefix=>base, separated by |)"
+msgstr "Path mappings, optional (prefix or prefix=>base, separated by |)"
 
 msgctxt "#30030"
 msgid "Test NAS connection"
