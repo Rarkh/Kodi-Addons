@@ -145,6 +145,11 @@
                     <data>RunScript(service.watchsync,update)</data>
                     <control type="button" format="action"/>
                 </setting>
+                <setting id="diagnose" type="action" label="30048">
+                    <level>0</level>
+                    <data>RunScript(service.watchsync,diagnose)</data>
+                    <control type="button" format="action"/>
+                </setting>
             </group>
         </category>
     </section>

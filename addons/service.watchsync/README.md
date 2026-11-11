@@ -129,7 +129,7 @@ Not in Phase 1: repository set-up, Docker/HTTP backend, series special cases bey
 
 Menu (*Programs > WatchSync*, also buttons in the settings): sync now, show status, edit path
 mappings, show log, rebuild cache (read everything from the NAS again, unsent events are kept),
-test NAS connection, check for updates (makes Kodi refresh its repositories now). Menu and service talk through notifications and files in the profile; the
+test NAS connection, check for updates (makes Kodi refresh its repositories now), write test (tries several ways of writing a file to the storage location and shows what Kodi answers). Menu and service talk through notifications and files in the profile; the
 service is the only one that writes events.
 
 ## Tests

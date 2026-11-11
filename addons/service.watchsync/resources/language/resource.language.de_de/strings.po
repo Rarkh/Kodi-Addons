@@ -111,6 +111,10 @@ msgctxt "#30047"
 msgid "Nach Updates suchen"
 msgstr "Nach Updates suchen"
 
+msgctxt "#30048"
+msgid "Schreibtest (Diagnose)"
+msgstr "Schreibtest (Diagnose)"
+
 msgctxt "#30050"
 msgid "Synchronisation angefordert"
 msgstr "Synchronisation angefordert"
@@ -190,3 +194,7 @@ msgstr "offline"
 msgctxt "#30076"
 msgid "Kodi prüft jetzt seine Repositories (installiert: {0}). Gibt es eine neuere Version, installiert Kodi sie selbst, wenn für dieses Add-on automatische Updates eingeschaltet sind; sonst öffne die Add-on-Information und wähle Aktualisieren."
 msgstr "Kodi prüft jetzt seine Repositories (installiert: {0}). Gibt es eine neuere Version, installiert Kodi sie selbst, wenn für dieses Add-on automatische Updates eingeschaltet sind; sonst öffne die Add-on-Information und wähle Aktualisieren."
+
+msgctxt "#30077"
+msgid "Schreibtest in {0}"
+msgstr "Schreibtest in {0}"

@@ -292,7 +292,9 @@ class MenuAddon(FakeAddon):
         return "9.9.9"
 
     def getLocalizedString(self, string_id):  # noqa: N802
-        return f"S{string_id}:{{0}}" if string_id in (30054, 30070, 30076) else f"S{string_id}"
+        return (
+            f"S{string_id}:{{0}}" if string_id in (30054, 30070, 30076, 30077) else f"S{string_id}"
+        )
 
 
 @pytest.fixture
@@ -341,6 +343,44 @@ def test_check_updates_refreshes_the_repositories(ui):
     menu.run(["x", "update"])
     assert ui.built == [menu.REFRESH_REPOS]
     assert ui.calls[-1] == ("ok", "S30076:9.9.9")
+
+
+def test_diagnose_reports_every_write_case(ui):
+    ui.rig.vfs.dirs.add(NAS)
+    ui.rig.vfs.dirs.add(NAS + "devices/")
+    menu.run(["x", "diagnose"])
+    kind, text = ui.calls[-1]
+    assert kind == "text"
+    assert text.startswith("S30077:" + NAS)
+    assert "diag.txt (bytes): write=True exists=True size=9" in text
+    assert "devices/: exists=True" in text and "rename=True" in text
+    assert ui.rig.vfs.files.keys().isdisjoint({NAS + "diag.txt", NAS + "diag-rename.txt"})
+
+
+def test_diagnose_shows_refused_writes_and_errors(ui):
+    ui.rig.vfs.fail_write = True
+    menu.run(["x", "diagnose"])
+    assert "write=False" in ui.calls[-1][1]
+    ui.rig.vfs.fail_write = False
+
+    def boom(path, mode=None):
+        raise OSError("denied")
+
+    ui.rig.vfs.File = boom
+    menu.run(["x", "diagnose"])
+    assert "error: denied" in ui.calls[-1][1]
+
+
+def test_diagnose_notices_a_file_that_never_shows_up(ui):
+    ui.rig.vfs.exists = lambda path: False
+    menu.run(["x", "diagnose"])
+    assert "exists=False size=-1" in ui.calls[-1][1]
+
+
+def test_diagnose_needs_a_storage_location(ui):
+    ui.addon.values["storage_path"] = ""
+    menu.run(["x", "diagnose"])
+    assert ui.calls[-1] == ("ok", "S30055")
 
 
 def test_rebuild_cache_asks_first(ui):
