@@ -82,15 +82,16 @@ One-time setup per test device:
 3. *Install from repository → Rarkh Repository (Test)* and install the add-on. Updates follow
    automatically.
 
-Use only **one** channel per device. Do not install `repository.rarkh` on a test device, or
-Kodi takes whichever channel offers the higher version.
+The test channel contains only the add-ons you name with `--only` (plus the test repository
+itself), so no add-on id is offered by both channels. Both repositories can be installed on one
+device; keep an add-on that is under test out of `repository.rarkh` until it is released.
 
 Test deploy (the branch `dev` must be created once with `git switch -c dev`):
 
 ```
 git switch dev
 # raise the version in addons/<id>/addon.xml (Kodi updates only to a higher version)
-python tools/build_repo.py --channel test
+python tools/build_repo.py --channel test --only service.watchsync
 git add -A
 git commit -m "Test build <addon> <version>"
 git push origin dev

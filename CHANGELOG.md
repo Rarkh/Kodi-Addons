@@ -25,7 +25,8 @@ Every add-on in this repository has its own version and uses
 ## [Unreleased]
 ### Added
 - `repository.rarkh.test` 1.0.0: repository add-on of a test channel (branch `dev`, folder
-  `repo-test/`). `tools/build_repo.py --channel test` builds it; the release channel leaves it out.
+  `repo-test/`). `tools/build_repo.py --channel test --only <id>` builds it with just the named
+  add-ons, so no add-on id is offered by both channels; the release channel leaves it out.
 - `service.watchsync`: first working version (Phase 1). Watch status is stored as immutable
   event files and snapshots on a NAS (via `xbmcvfs`, tmp + rename, no locking), merged by newest
   UTC timestamp, applied to Kodi's database only when newer than what was applied before, with

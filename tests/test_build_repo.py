@@ -162,19 +162,32 @@ def test_release_channel_leaves_out_the_test_repository(repo: Path):
     assert not (repo / "repo-test").exists()
 
 
-def test_test_channel_builds_everything_into_repo_test(
+def test_test_channel_builds_only_the_test_repo_and_chosen_addons(
     repo: Path, capsys: pytest.CaptureFixture[str]
 ):
     write_addon(repo / "addons", "plugin.a")
+    write_addon(repo / "addons", "plugin.b")
     write_addon(repo / "addons", "repository.rarkh.test", "1.0.0")
-    assert br.main(["--channel", "test"]) == 0
+    stale = repo / "repo-test" / "zips" / "plugin.old"
+    stale.mkdir(parents=True)
+    assert br.main(["--channel", "test", "--only", "plugin.b"]) == 0
     out = repo / "repo-test"
     data = (out / "addons.xml").read_bytes()
-    assert [a.get("id") for a in ET.fromstring(data)] == ["plugin.a", "repository.rarkh.test"]
+    assert [a.get("id") for a in ET.fromstring(data)] == ["plugin.b", "repository.rarkh.test"]
     assert (out / "addons.xml.md5").read_text(encoding="ascii") == hashlib.md5(data).hexdigest()
-    assert (out / "zips" / "plugin.a" / "plugin.a-1.0.0.zip").is_file()
+    assert (out / "zips" / "plugin.b" / "plugin.b-1.0.0.zip").is_file()
+    assert not (out / "zips" / "plugin.a").exists()
+    assert not stale.exists()
     assert not (repo / "repo").exists()
     assert "repo-test/addons.xml" in capsys.readouterr().out
+
+
+def test_test_channel_without_only_contains_just_the_test_repo(repo: Path):
+    write_addon(repo / "addons", "plugin.a")
+    write_addon(repo / "addons", "repository.rarkh.test")
+    assert br.main(["--channel", "test"]) == 0
+    data = (repo / "repo-test" / "addons.xml").read_bytes()
+    assert [a.get("id") for a in ET.fromstring(data)] == ["repository.rarkh.test"]
 
 
 def test_main_fails_on_broken_addon(repo: Path, capsys: pytest.CaptureFixture[str]):

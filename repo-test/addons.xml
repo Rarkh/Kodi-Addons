@@ -1,49 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addons>
-<addon id="plugin.program.artlibcleanup" name="Art Library Cleanup" version="0.1.3" provider-name="Rarkh">
-    <requires>
-        <import addon="xbmc.python" version="3.0.0"/>
-    </requires>
-    <extension point="xbmc.python.pluginsource" library="default.py">
-        <provides>executable</provides>
-    </extension>
-    <extension point="xbmc.addon.metadata">
-        <summary lang="de_DE">Entfernt verwaiste Bilder aus dem Kodi-Cache</summary>
-        <summary lang="en_GB">Removes orphaned images from the Kodi cache</summary>
-        <description lang="de_DE">Kodi löscht gecachte Bilder (Fanart, Screenshots, Schauspielerbilder) nicht, wenn ein Film oder eine Serie aus der Bibliothek entfernt wird. Dieses Addon vergleicht den Bildcache mit der Video- und optional der Musikbibliothek, zeigt die verwaisten Einträge samt Größe an und löscht sie nach Bestätigung. Skin-Bilder und Addon-Icons bleiben unangetastet. Standardmäßig läuft nur eine Vorschau (Dry-Run).</description>
-        <description lang="en_GB">Kodi does not delete cached images (fanart, screenshots, actor thumbnails) when a movie or show is removed from the library. This add-on compares the image cache with the video library and optionally the music library, lists the orphaned entries with their size and removes them after confirmation. Skin images and add-on icons are never touched. By default only a preview (dry run) is performed.</description>
-        <platform>all</platform>
-        <license>MIT</license>
-        <assets>
-            <icon>icon.png</icon>
-            <fanart>fanart.jpg</fanart>
-        </assets>
-    </extension>
-</addon>
-<addon id="repository.rarkh" name="Rarkh Repository" version="1.0.2" provider-name="Rarkh">
-    <requires>
-        <import addon="xbmc.addon" version="12.0.0"/>
-    </requires>
-    <extension point="xbmc.addon.repository" name="Rarkh Repository">
-        <dir>
-            <info compressed="false">https://raw.githubusercontent.com/Rarkh/Kodi-Addons/main/repo/addons.xml</info>
-            <checksum>https://raw.githubusercontent.com/Rarkh/Kodi-Addons/main/repo/addons.xml.md5</checksum>
-            <datadir zip="true">https://raw.githubusercontent.com/Rarkh/Kodi-Addons/main/repo/zips/</datadir>
-        </dir>
-    </extension>
-    <extension point="xbmc.addon.metadata">
-        <summary lang="de_DE">Rarkh's Kodi-Addon-Repository</summary>
-        <summary lang="en_GB">Rarkh's Kodi add-on repository</summary>
-        <description lang="de_DE">Stellt eigene Kodi-Addons über GitHub bereit und hält sie automatisch aktuell.</description>
-        <description lang="en_GB">Provides my own Kodi add-ons via GitHub and keeps them up to date automatically.</description>
-        <platform>all</platform>
-        <license>MIT</license>
-        <assets>
-            <icon>icon.png</icon>
-            <fanart>fanart.jpg</fanart>
-        </assets>
-    </extension>
-</addon>
 <addon id="repository.rarkh.test" name="Rarkh Repository (Test)" version="1.0.0" provider-name="Rarkh">
     <requires>
         <import addon="xbmc.addon" version="12.0.0"/>

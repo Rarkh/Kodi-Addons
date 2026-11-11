@@ -3,7 +3,8 @@
 
 Usage:
     python tools/build_repo.py                 release channel -> repo/
-    python tools/build_repo.py --channel test  test channel    -> repo-test/ (branch "dev")
+    python tools/build_repo.py --channel test --only <id> [--only <id> ...]
+                                               test channel    -> repo-test/ (branch "dev")
 
 Result (per channel folder):
     zips/<id>/<id>-<version>.zip   (folder <id>/ as the ZIP root)
@@ -11,9 +12,11 @@ Result (per channel folder):
     addons.xml
     addons.xml.md5
 
-The release channel leaves out the test repository add-on; the test channel contains everything.
+The release channel leaves out the test repository add-on. The test channel contains only the
+test repository add-on plus the add-ons named with --only, so no add-on id is offered by both
+channels and a device can never be updated from the wrong one. It is rebuilt from scratch.
 
-Old ZIP versions are kept (rollback); ZIPs of the current version are rebuilt.
+Release channel: old ZIP versions are kept (rollback); ZIPs of the current version are rebuilt.
 Standard library only.
 """
 
@@ -114,11 +117,18 @@ def human_size(size: int) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Build the Kodi repository.")
     parser.add_argument("--channel", choices=("release", "test"), default="release")
-    test = parser.parse_args(argv).channel == "test"
+    parser.add_argument("--only", action="append", default=[], metavar="ID")
+    args = parser.parse_args(argv)
+    test = args.channel == "test"
     repo_dir = TEST_REPO_DIR if test else REPO_DIR
+    wanted = TEST_ONLY | set(args.only)
+    if test:
+        shutil.rmtree(repo_dir, ignore_errors=True)
     built: list[Built] = []
     for addon_dir in find_addon_dirs():
-        if not test and addon_dir.name in TEST_ONLY:
+        if addon_dir.name in TEST_ONLY and not test:
+            continue
+        if test and addon_dir.name not in wanted:
             continue
         try:
             addon_id, version, text = read_addon_xml(addon_dir)
