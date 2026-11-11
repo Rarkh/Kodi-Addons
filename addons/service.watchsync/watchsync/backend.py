@@ -7,11 +7,15 @@ read back, then renamed to their final name.
 from __future__ import annotations
 
 import posixpath
-from typing import Any, Iterable
+import time
+from typing import Any, Callable, Iterable
 
 import xbmcvfs
 
 LAYOUT = ("events", "devices", "snapshots")
+# NFS clients can report a stale size right after a write: read back a few times
+READBACK_TRIES = 4
+READBACK_WAIT_S = 0.25
 
 
 class BackendError(Exception):
@@ -49,10 +53,17 @@ class Backend:
 
 
 class VfsBackend(Backend):
-    def __init__(self, root: str, folders: Iterable[str] = LAYOUT, vfs: Any = xbmcvfs) -> None:
+    def __init__(
+        self,
+        root: str,
+        folders: Iterable[str] = LAYOUT,
+        vfs: Any = xbmcvfs,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
         self.root = root if root.endswith(("/", "\\")) else root + "/"
         self.folders = tuple(folders)
         self.vfs = vfs
+        self.sleep = sleep
 
     def _dir(self, folder: str) -> str:
         return self.root + (folder + "/" if folder else "")
@@ -93,6 +104,20 @@ class VfsBackend(Backend):
         except BackendError:
             return False
 
+    def _read_back(self, path: str, data: bytes) -> bytes:
+        """What a read of the file returns; retried while it differs (stale NFS attributes)."""
+        back = b""
+        for attempt in range(READBACK_TRIES):
+            if attempt:
+                self.sleep(READBACK_WAIT_S)
+            try:
+                back = self._read_bytes(path)
+            except BackendError:
+                back = b""
+            if back == data:
+                break
+        return back
+
     def write_text(self, folder: str, name: str, text: str, overwrite: bool = False) -> None:
         data = text.encode("utf-8")
         target = self._path(folder, name)
@@ -104,9 +129,13 @@ class VfsBackend(Backend):
             written = file.write(bytearray(data))
         finally:
             file.close()
-        if not written or not self._same_content(tmp, data):
+        if not written:
             self.vfs.delete(tmp)
-            raise BackendError(f"cannot write {tmp}")
+            raise BackendError(f"cannot write {tmp}: the write was refused")
+        back = self._read_back(tmp, data)
+        if back != data:
+            self.vfs.delete(tmp)
+            raise BackendError(f"cannot write {tmp}: read back {len(back)} of {len(data)} bytes")
         if self.vfs.exists(target):
             if not overwrite:
                 same = self._same_content(target, data)

@@ -86,10 +86,38 @@ def test_write_failures(vfs, monkeypatch):
     with pytest.raises(BackendError):
         backend.write_text("events", "a_000001.json", "x")
     vfs.fail_rename = False
-    monkeypatch.setattr(backend, "_same_content", lambda path, data: False)
-    with pytest.raises(BackendError):
+    monkeypatch.setattr(backend, "_read_bytes", lambda path: b"")
+    with pytest.raises(BackendError, match="read back 0 of 1 bytes"):
         backend.write_text("events", "a_000001.json", "x")
     assert backend.list_files("events") == []
+
+
+def test_write_failure_names_the_reason(vfs):
+    backend = make_backend(vfs)
+    backend.ensure_layout()
+    vfs.fail_write = True
+    with pytest.raises(BackendError, match="write was refused"):
+        backend.write_text("events", "a_000001.json", "x")
+
+
+def test_read_back_waits_for_stale_nfs_attributes(vfs, monkeypatch):
+    """The first reads right after the write return nothing; the file is fine a moment later."""
+    pauses: list[float] = []
+    backend = VfsBackend("nfs://nas/WatchSync/", vfs=vfs, sleep=pauses.append)
+    backend.ensure_layout()
+    real = backend._read_bytes
+    calls = {"n": 0}
+
+    def stale_then_real(path: str) -> bytes:
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise BackendError("stale")
+        return real(path)
+
+    monkeypatch.setattr(backend, "_read_bytes", stale_then_real)
+    backend.write_text("events", "a_000001.json", "x")
+    assert backend.read_text("events", "a_000001.json") == "x"
+    assert pauses == [0.25, 0.25]
 
 
 def test_read_errors(vfs):
@@ -258,3 +286,19 @@ def test_load_config_clamps_values():
     assert config.mappings[0].raw == "R:\\"
     low = load_config(FakeAddon(watched_threshold=0, log_level=0), "Kodi")
     assert low.threshold == 0.01 and not low.debug
+
+
+def test_existing_target_that_cannot_be_read_counts_as_different(vfs, monkeypatch):
+    backend = make_backend(vfs)
+    backend.ensure_layout()
+    backend.write_text("events", "a_000001.json", "old")
+    real = backend._read_bytes
+
+    def unreadable_target(path: str) -> bytes:
+        if path.endswith("a_000001.json"):
+            raise BackendError("gone")
+        return real(path)
+
+    monkeypatch.setattr(backend, "_read_bytes", unreadable_target)
+    with pytest.raises(BackendError, match="already exists"):
+        backend.write_text("events", "a_000001.json", "new")
