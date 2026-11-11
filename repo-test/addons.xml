@@ -24,7 +24,7 @@
         </assets>
     </extension>
 </addon>
-<addon id="service.watchsync" name="WatchSync" version="0.2.4" provider-name="Rarkh">
+<addon id="service.watchsync" name="WatchSync" version="0.2.5" provider-name="Rarkh">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
     </requires>

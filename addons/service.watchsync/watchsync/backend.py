@@ -16,6 +16,8 @@ LAYOUT = ("events", "devices", "snapshots")
 # NFS clients can report a stale size right after a write: read back a few times
 READBACK_TRIES = 4
 READBACK_WAIT_S = 0.25
+# Read in chunks until the end: the size a share reports can be wrong (seen on Android NFS)
+READ_CHUNK = 64 * 1024
 
 
 class BackendError(Exception):
@@ -94,13 +96,25 @@ class VfsBackend(Backend):
             raise BackendError(f"{path} does not exist")
         file = self.vfs.File(path)
         try:
-            return bytes(file.readBytes(file.size()))
+            parts = []
+            while True:
+                chunk = bytes(file.readBytes(READ_CHUNK))
+                if not chunk:
+                    return b"".join(parts)
+                parts.append(chunk)
         finally:
             file.close()
 
     def read_text(self, folder: str, name: str) -> str:
+        path = self._path(folder, name)
         try:
-            return self._read_bytes(self._path(folder, name)).decode("utf-8")
+            data = self._read_bytes(path)
+            for _ in range(READBACK_TRIES - 1):
+                if data:
+                    break
+                self.sleep(READBACK_WAIT_S)  # a file that looks empty may just not be visible yet
+                data = self._read_bytes(path)
+            return data.decode("utf-8")
         except UnicodeDecodeError as exc:
             raise BackendError(f"{name}: not UTF-8") from exc
 

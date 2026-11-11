@@ -30,6 +30,8 @@ PROGRESS_INTERVAL_S = 60.0
 MAX_ATTEMPTS = 5
 COMPACT_THRESHOLD = 100
 CLOCK_TOLERANCE_S = 120.0
+# A file time further away than this is not a clock problem but a share that reports nonsense
+CLOCK_PLAUSIBLE_S = 366 * 24 * 3600.0
 
 Log = Callable[..., None]
 
@@ -290,6 +292,11 @@ class SyncEngine:
         except BackendError:
             return None
         offset = stamp - self.clock().timestamp()
+        if abs(offset) > CLOCK_PLAUSIBLE_S:
+            self.log(
+                f"The NAS reports an unusable file time ({stamp:.0f}): clock check skipped", INFO
+            )
+            return None
         self.clock_offset = offset
         if abs(offset) > CLOCK_TOLERANCE_S:
             self.log(f"Clock differs from the NAS by {offset:.0f} s: check the time", WARNING)

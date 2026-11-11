@@ -387,6 +387,15 @@ def test_clock_check_warns_when_nas_time_is_far_off(rig):
     assert any("Clock differs" in w for w in rig.warnings())
 
 
+def test_clock_check_ignores_a_nonsense_file_time(rig):
+    """Android NFS has reported a file time of 3.6e18: not a clock problem."""
+    rig.vfs.default_mtime = 3.6e18
+    a = rig.device("a")
+    a.sync()
+    assert a.clock_offset is None
+    assert not any("Clock differs" in w for w in rig.warnings())
+
+
 def test_clock_check_without_stat_support(rig):
     a = rig.device("a")
     a.backend.ensure_layout()

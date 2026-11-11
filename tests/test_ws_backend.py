@@ -311,3 +311,22 @@ def test_existing_target_that_cannot_be_read_counts_as_different(vfs, monkeypatc
     monkeypatch.setattr(backend, "_read_bytes", unreadable_target)
     with pytest.raises(BackendError, match="already exists"):
         backend.write_text("events", "a_000001.json", "new")
+
+
+def test_read_does_not_trust_the_reported_size(vfs, monkeypatch):
+    """A share that reports size 0 must not make a file look empty."""
+    backend = make_backend(vfs)
+    backend.ensure_layout()
+    backend.write_text("events", "a_000001.json", "hello" * 20000)  # more than one chunk
+    monkeypatch.setattr(type(vfs.File("x")), "size", lambda self: 0)
+    assert backend.read_text("events", "a_000001.json") == "hello" * 20000
+
+
+def test_read_waits_for_a_file_that_looks_empty(vfs):
+    pauses: list[float] = []
+    backend = VfsBackend("nfs://nas/WatchSync/", vfs=vfs, sleep=pauses.append)
+    backend.ensure_layout()
+    path = "nfs://nas/WatchSync/events/a_000001.json"
+    vfs.files[path] = b""
+    assert backend.read_text("events", "a_000001.json") == ""
+    assert pauses == [0.25, 0.25, 0.25]
