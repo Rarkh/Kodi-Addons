@@ -31,18 +31,6 @@ msgctxt "#30006"
 msgid "Mark as watched from (%)"
 msgstr "Mark as watched from (%)"
 
-msgctxt "#30007"
-msgid "Playback started elsewhere"
-msgstr "Playback started elsewhere"
-
-msgctxt "#30008"
-msgid "Jump to the saved position automatically"
-msgstr "Jump to the saved position automatically"
-
-msgctxt "#30009"
-msgid "Ask first"
-msgstr "Ask first"
-
 msgctxt "#30010"
 msgid "Use local cache"
 msgstr "Use local cache"
@@ -170,10 +158,6 @@ msgstr "Path on this device (start of the path)"
 msgctxt "#30066"
 msgid "NAS-relative base (optional, usually empty)"
 msgstr "NAS-relative base (optional, usually empty)"
-
-msgctxt "#30070"
-msgid "Continue at {0} where it was stopped on another device?"
-msgstr "Continue at {0} where it was stopped on another device?"
 
 msgctxt "#30072"
 msgid "Device: {0}\nNAS folder: {1}\nConnection: {2}\nLast synchronisation: {3}\nEvents waiting to be sent: {4}\nKnown media: {5}\nMedia without path mapping: {6}\nDefective files: {7}\nClock difference to the NAS: {8}"

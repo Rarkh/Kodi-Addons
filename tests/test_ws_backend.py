@@ -258,7 +258,6 @@ class FakeAddon:
             "sync_interval": 1,
             "save_interval": 20,
             "watched_threshold": 150,
-            "resume_mode": 1,
             "cache_enabled": True,
             "log_level": 1,
         }
@@ -291,7 +290,7 @@ def test_load_config_clamps_values():
     assert config.storage_path == "nfs://nas/W"
     assert config.sync_interval == 5 and config.save_interval == 20
     assert config.threshold == 1.0
-    assert config.debug and config.resume_mode == 1
+    assert config.debug
     assert config.mappings[0].raw == "R:\\"
     low = load_config(FakeAddon(watched_threshold=0, log_level=0), "Kodi")
     assert low.threshold == 0.01 and not low.debug

@@ -20,7 +20,6 @@ class Config:
     sync_interval: float
     save_interval: float
     threshold: float
-    resume_mode: int
     cache_enabled: bool
     debug: bool
 
@@ -49,7 +48,6 @@ def load_config(addon: Any, friendly_name: str) -> Config:
         sync_interval=max(5, addon.getSettingInt("sync_interval")),
         save_interval=max(5, addon.getSettingInt("save_interval")),
         threshold=min(100, max(1, addon.getSettingInt("watched_threshold"))) / 100,
-        resume_mode=addon.getSettingInt("resume_mode"),
         cache_enabled=addon.getSettingBool("cache_enabled"),
         debug=addon.getSettingInt("log_level") == 1,
     )

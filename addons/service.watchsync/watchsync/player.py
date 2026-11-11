@@ -8,20 +8,18 @@ from typing import Any, Callable
 
 import xbmc
 
-from .applier import is_applied
 from .engine import SyncEngine
-from .events import Event
-from .logger import DEBUG, INFO, WARNING
+from .logger import DEBUG, WARNING
 from .mediaid import Fingerprinter, Mapping, is_trackable, to_media_id
 
 # Below this position no progress is written: a playback that starts at 0 (a quick look at a
 # file) must not overwrite the saved state of the medium with "0". Only a stop right at the
 # start of a medium that had a saved position clears it: a "reset" event.
 QUIET_START_S = 1.0
-# Stopping within this many seconds of the start clears a saved position (even after a jump)
+# Stopping within this many seconds of the start clears a saved position (also after Kodi's
+# own resume put the playback at that position)
 QUICK_STOP_S = 1.0
 RESUME_TOLERANCE_S = 5.0
-RESUME_AUTO, RESUME_ASK = 0, 1
 
 
 @dataclass
@@ -45,18 +43,12 @@ class Tracker:
         mappings: list[Mapping],
         fingerprinter: Fingerprinter,
         threshold: float,
-        resume_mode: int,
-        seek: Callable[[float], None],
-        ask_resume: Callable[[float], bool],
         log: Callable[..., None],
     ) -> None:
         self.engine = engine
         self.mappings = mappings
         self.fingerprinter = fingerprinter
         self.threshold = threshold
-        self.resume_mode = resume_mode
-        self.seek = seek
-        self.ask_resume = ask_resume
         self.log = log
         self.current: Current | None = None
 
@@ -74,28 +66,11 @@ class Tracker:
         if ref.unmapped:
             self.engine.remember_path(path)
             self.log(f"No path mapping for {ref.id}: matched by file name and folders", DEBUG)
-        if previous:
-            self._maybe_resume(cur, previous)
-            cur.had_saved = previous.type == "progress" and previous.position_s > RESUME_TOLERANCE_S
-
-    def _maybe_resume(self, cur: Current, previous: Event) -> None:
-        """Fallback: jump to the position another device saved, if it is the newest state.
-
-        Normally Kodi's own resume handling already has it (applied to its database before the
-        playback). Only when that was not possible (no library entry, query failed) we seek.
-        """
-        if previous.device == self.engine.device or previous.type != "progress":
-            return
-        applied = self.engine.local.applied
-        entry = applied.get(previous.media_id)
-        if is_applied(previous, applied) and entry and entry["ok"] and entry.get("via") != "file":
-            return  # Kodi's library has it; a file path entry may not make Kodi resume: seek
-        if abs(previous.position_s - cur.position) <= RESUME_TOLERANCE_S:
-            return
-        if self.resume_mode == RESUME_AUTO or self.ask_resume(previous.position_s):
-            self.log(f"Resuming at {previous.position_s:.0f} s (saved on {previous.device})", INFO)
-            self.seek(previous.position_s)
-            cur.position = previous.position_s
+        # Resuming is Kodi's own business: the saved position is in its database (applied by the
+        # service), so Kodi asks where to continue. This add-on never jumps and never asks.
+        cur.had_saved = bool(
+            previous and previous.type == "progress" and previous.position_s > RESUME_TOLERANCE_S
+        )
 
     def _ratio(self, cur: Current) -> float:
         return cur.position / cur.duration if cur.duration > 0 else 0.0

@@ -96,7 +96,7 @@ files do not match (the fingerprint still does once both devices played the file
 - **Playback:** `onAVStarted`, pause, stop and end create events (also for files that are not in
   the library). The position is saved locally every N seconds (default 10), at pause/stop/end an
   event is written. From 90 % (setting) or at the end the medium counts as watched
-  (`playcount` + 1); no progress is written while the position is below 1 s, so a quick look at a file never overwrites the position another playback saved. Stopping within 1 s of the start of a medium that had a saved position clears that position on all devices (`reset`), also after the automatic jump to it.
+  (`playcount` + 1); no progress is written while the position is below 1 s, so a quick look at a file never overwrites the position another playback saved. Stopping within 1 s of the start of a medium that had a saved position clears that position on all devices (`reset`), also after Kodi's own resume put the playback at that position.
 - **Kodi start and every sync interval (default 30 s):** the NAS state is read and merged.
 
 ### Reconciling with Kodi's own database
@@ -112,9 +112,9 @@ The NAS is the truth; Kodi's database is only the display on this device.
    `unwatched` event is created (not if the state on the NAS already has this playcount, e.g. the
    value Kodi writes itself at the end of a playback).
 4. **Resume point in advance:** the NAS state is applied to Kodi's database at start and at
-   every sync, so Kodi's own "resume or start from beginning" works. `seekTime()` after
-   `onAVStarted` is only the fallback (file without library entry, or applying did not work).
-   Setting *Playback started elsewhere* (jump automatically / ask first) controls that fallback.
+   every sync, so Kodi's own question "resume from ... or start from beginning" appears. The
+   add-on never jumps to a position itself and never asks where to continue; that is Kodi's
+   dialog only.
 5. Positions Kodi writes itself at stop are harmless: the add-on writes its own event with the
    same value.
 6. While a medium is **playing**, foreign events for it are not applied to Kodi; they wait and are
@@ -127,7 +127,7 @@ them per path, so the add-on needs the path *this* device uses. It learns it fro
 device played itself: if another device has an event for the same file under another location
 (`smb://nas/` there, `nfs://192.168.0.5/` here), the difference is the translation for all other
 files of that share; a location this device also uses needs none. Without a known path nothing is
-written (the fallback seek at the start of the playback still works). Written with
+written (Kodi then has no resume point for that file here). Written with
 `Files.SetFileDetails`, which has to be tested on real devices.
 
 Not in Phase 1: repository set-up, Docker/HTTP backend, series special cases beyond the path id.
@@ -142,7 +142,6 @@ Not in Phase 1: repository set-up, Docker/HTTP backend, series special cases bey
 | Check for new events every | 30 s    | sync interval                                                |
 | Save position every        | 10 s    | local position saving while playing                          |
 | Mark as watched from       | 90 %    |                                                              |
-| Playback started elsewhere | automatic | fallback seek: automatically or ask first                  |
 | Use local cache            | on      | off: queue and state are not kept between restarts           |
 | Log level                  | normal  | debug adds details to the Kodi log                           |
 
@@ -179,7 +178,7 @@ suppression, "NAS newer than applied" and "defer while playing" with mock timest
 1. Install the add-on on both, give each a different device name and the **same** storage
    location; *Test NAS connection* must succeed on both. Path mappings are not needed.
 2. Play a movie from the share on device A for a minute, pause. On B: within 30 s the resume
-   point appears (library item) or the fallback seek happens when starting the file.
+   point appears (library item) or in the file list, and Kodi asks where to continue.
 3. Mark something watched on B; A shows it after the next sync. Mark it unwatched on A again.
 4. Rewind on purpose on B (stop at 0:30 after A was at 20:00): A must follow, not keep 20:00.
 5. Pull the network cable while playing, stop, reconnect: the status shows the queued events,
@@ -191,7 +190,7 @@ suppression, "NAS newer than applied" and "defer while playing" with mock timest
 Everything was tested with a fake `xbmcvfs` and fake JSON-RPC only. In particular:
 
 - **`Files.SetFileDetails`** for files outside the library on Kodi 21 (used to apply watched
-  status and resume to such files). If it fails it is logged once, the fallback seek remains,
+  status and resume to such files). If it fails it is logged once, Kodi has no resume point for such files,
   but the "watched" mark of those files will not show in Kodi's file lists.
 - **NFS behaviour on Android**: `xbmcvfs` rename over an existing file, `listdir` on large
   folders, attribute caching (a new event may show up a few seconds late), `Stat.st_mtime`.

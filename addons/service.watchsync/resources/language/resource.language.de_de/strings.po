@@ -31,18 +31,6 @@ msgctxt "#30006"
 msgid "Als gesehen markieren ab (%)"
 msgstr "Als gesehen markieren ab (%)"
 
-msgctxt "#30007"
-msgid "Wiedergabe auf anderem Gerät gestartet"
-msgstr "Wiedergabe auf anderem Gerät gestartet"
-
-msgctxt "#30008"
-msgid "Automatisch zur gespeicherten Position springen"
-msgstr "Automatisch zur gespeicherten Position springen"
-
-msgctxt "#30009"
-msgid "Vorher fragen"
-msgstr "Vorher fragen"
-
 msgctxt "#30010"
 msgid "Lokalen Cache verwenden"
 msgstr "Lokalen Cache verwenden"
@@ -170,10 +158,6 @@ msgstr "Pfad auf diesem Gerät (Anfang des Pfads)"
 msgctxt "#30066"
 msgid "NAS-relative Basis (optional, meist leer)"
 msgstr "NAS-relative Basis (optional, meist leer)"
-
-msgctxt "#30070"
-msgid "Bei {0} fortsetzen, wo auf einem anderen Gerät gestoppt wurde?"
-msgstr "Bei {0} fortsetzen, wo auf einem anderen Gerät gestoppt wurde?"
 
 msgctxt "#30072"
 msgid "Gerät: {0}\nNAS-Ordner: {1}\nVerbindung: {2}\nLetzte Synchronisation: {3}\nEreignisse zum Senden: {4}\nBekannte Medien: {5}\nMedien ohne Pfad-Mapping: {6}\nDefekte Dateien: {7}\nZeitabweichung zum NAS: {8}"

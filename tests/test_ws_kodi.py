@@ -423,23 +423,17 @@ def test_unresolvable_file_is_ignored(kodi, clock):
 
 
 class Env:
-    def __init__(self, rig: Rig, name: str = "b", mode: int = 0, answer: bool = True) -> None:
+    def __init__(self, rig: Rig, name: str = "b") -> None:
         self.rig = rig
         self.engine = rig.device(name)
         self.engine.sync()
-        self.seeks: list[float] = []
-        self.asked: list[float] = []
         self.logs: list[str] = []
-        self.answer = answer
         self.fingerprints = Fingerprinter(lambda path: (_ for _ in ()).throw(OSError("no")))
         self.tracker = Tracker(
             self.engine,
             MAPS,
             self.fingerprints,
             0.9,
-            mode,
-            self.seeks.append,
-            lambda pos: self.asked.append(pos) or self.answer,
             lambda msg, level=1: self.logs.append(msg),
         )
 
@@ -506,10 +500,9 @@ def test_a_quick_look_at_a_file_without_a_saved_position_writes_nothing(env):
 
 
 def test_stopping_right_at_the_start_clears_the_saved_position(env):
-    """Saved position, automatic jump to it, and a stop within a second of the start."""
+    """Saved position, Kodi resumes there, and a stop within a second of the start."""
     put_foreign_progress(env)
-    env.tracker.started(PATH, 0.0, 7000.0)
-    assert env.seeks == [600.0]
+    env.tracker.started(PATH, 600.0, 7000.0)
     env.tracker.tick(600.5, 7000.0)
     env.rig.clock.advance(0.5)
     env.tracker.stopped()
@@ -519,9 +512,8 @@ def test_stopping_right_at_the_start_clears_the_saved_position(env):
     assert state is not None and state.type == "reset"
 
 
-def test_stopping_at_the_start_of_a_playback_from_the_beginning_clears_it_too():
-    env = Env(Rig(), mode=1, answer=False)  # the user declined the jump
-    put_foreign_progress(env)
+def test_stopping_at_the_start_of_a_playback_from_the_beginning_clears_it_too(env):
+    put_foreign_progress(env)  # the user answered Kodi's resume question with "from beginning"
     env.tracker.started(PATH, 0.0, 7000.0)
     env.rig.clock.advance(5)
     env.tracker.tick(0.5, 7000.0)
@@ -529,8 +521,7 @@ def test_stopping_at_the_start_of_a_playback_from_the_beginning_clears_it_too():
     assert env.events()[-1].type == "reset"
 
 
-def test_stopping_later_keeps_the_progress():
-    env = Env(Rig(), mode=1, answer=False)
+def test_stopping_later_keeps_the_progress(env):
     put_foreign_progress(env)
     env.tracker.started(PATH, 0.0, 7000.0)
     env.tracker.tick(20.0, 7000.0)
@@ -605,52 +596,14 @@ def test_state_of_another_device_is_found_by_file_name_and_folders(env):
     assert env.engine.lookup("nfs://elsewhere/RAID5/Other/A.mkv", None) is None
 
 
-def test_newer_position_of_another_device_is_a_fallback_seek(env):
+def test_the_add_on_never_jumps_or_asks_kodi_resumes_by_itself(env):
+    """The saved position is in Kodi's database; where to continue is Kodi's question."""
     put_foreign_progress(env)
+    before = list(env.engine.local.queue)
     env.tracker.started(PATH, 0.0, 7000.0)
-    assert env.seeks == [600.0] and env.tracker.current.position == 600.0
-
-
-def test_ask_mode_respects_the_answer():
-    no = Env(Rig(), mode=1, answer=False)
-    put_foreign_progress(no)
-    no.tracker.started(PATH, 0.0, 7000.0)
-    assert no.asked == [600.0] and no.seeks == []
-    yes = Env(Rig(), mode=1, answer=True)
-    put_foreign_progress(yes)
-    yes.tracker.started(PATH, 0.0, 7000.0)
-    assert yes.seeks == [600.0]
-
-
-def test_no_seek_when_kodi_already_has_the_position(env):
-    put_foreign_progress(env)
-    state = env.engine.state["Filme/A.mkv"]
-    env.engine.local.applied["Filme/A.mkv"] = applied_entry(state, ok=True)
-    env.tracker.started(PATH, 0.0, 7000.0)
-    assert env.seeks == []
-    # applied but not successfully (file outside the library): still seek
-    env.engine.local.applied["Filme/A.mkv"] = applied_entry(state, ok=False)
-    env.tracker.started(PATH, 0.0, 7000.0)
-    assert env.seeks == [600.0]
-    # written for a file path: Kodi may not resume from it, so the seek stays as a safety net
-    env.seeks.clear()
-    env.engine.local.applied["Filme/A.mkv"] = applied_entry(state, ok=True, via="file")
-    env.tracker.started(PATH, 0.0, 7000.0)
-    assert env.seeks == [600.0]
-
-
-def test_no_seek_for_close_positions_own_events_or_other_types(env):
-    put_foreign_progress(env, position_s=602.0)
-    env.tracker.started(PATH, 600.0, 7000.0)
-    assert env.seeks == []
-    own = Env(Rig(), name="b")
-    own.engine.record("Filme/A.mkv", "progress", 500.0, 7000.0, 0)
-    own.tracker.started(PATH, 0.0, 7000.0)
-    assert own.seeks == []
-    watched = Env(Rig())
-    put_foreign_progress(watched, kind="watched", position_s=0.0, playcount=1)
-    watched.tracker.started(PATH, 0.0, 7000.0)
-    assert watched.seeks == []
+    assert env.tracker.current is not None and env.tracker.current.position == 0.0
+    assert all("Resuming" not in m for m in env.logs)
+    assert env.engine.local.queue == before
 
 
 # ---- PlayerMonitor adapter ---------------------------------------------------------------

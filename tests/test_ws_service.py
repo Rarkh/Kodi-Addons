@@ -51,12 +51,10 @@ class Setup:
             "sync_interval": 30,
             "save_interval": 10,
             "watched_threshold": 90,
-            "resume_mode": 0,
             **settings,
         }
         self.addon = FakeAddon(**values)
         self.local = make_local(self.rig.vfs, "special://profile/svc/")
-        self.asked: list[float] = []
         env = Env(
             addon=self.addon,
             local=self.local,
@@ -66,12 +64,10 @@ class Setup:
             rpc=self.kodi,
             friendly_name=lambda: "Kodi Büro",
             opener=lambda path: (_ for _ in ()).throw(OSError("no")),
-            ask_resume=lambda pos: self.asked.append(pos) or True,
             make_backend=lambda path: VfsBackend(path, LAYOUT, self.rig.vfs),
         )
         self.monitor = ScriptedMonitor()
         self.service = Service(env, self.monitor, runtime.PlayerMonitor())
-        self.service.player.seekTime = lambda pos: None  # type: ignore[method-assign]
 
 
 def engine_of(service: Service) -> SyncEngine:
@@ -241,16 +237,6 @@ def test_run_service_wires_real_objects(monkeypatch):
     assert env.now().tzinfo is not None and env.mono() >= 0
     assert env.friendly_name() == xbmc.getInfoLabel("System.FriendlyName")
     assert env.make_backend("nfs://x/").root == "nfs://x/"
-    answers: list[Any] = []
-
-    class Dialog:
-        def yesno(self, heading, text):
-            answers.append(text)
-            return True
-
-    monkeypatch.setattr(runtime.xbmcgui, "Dialog", Dialog)
-    assert env.ask_resume(3661.0)
-    assert answers
 
 
 # ---- menu --------------------------------------------------------------------------------
@@ -290,7 +276,6 @@ class MenuDialog:
 class MenuAddon(FakeAddon):
     FORMATS = {
         30054: "S30054:{0}",
-        30070: "S30070:{0}",
         30076: "S30076:{0}:{1}:{2}",
         30077: "S30077:{0}",
         30081: "S30081:{0}",

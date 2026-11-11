@@ -10,7 +10,6 @@ from typing import Any, Callable
 
 import xbmc
 import xbmcaddon
-import xbmcgui
 import xbmcvfs
 
 from .applier import KodiApplier, ManualChanges, Rpc, make_rpc
@@ -31,7 +30,6 @@ METHOD_REBUILD = "Other.Rebuild"
 METHOD_UPDATE = "VideoLibrary.OnUpdate"
 NOTIFY_SYNC = f"NotifyAll({ADDON_ID},SyncNow)"
 NOTIFY_REBUILD = f"NotifyAll({ADDON_ID},Rebuild)"
-STRING_RESUME = 30070
 
 
 class ServiceMonitor(xbmc.Monitor):
@@ -70,7 +68,6 @@ class Env:
     rpc: Rpc
     friendly_name: Callable[[], str]
     opener: Callable[[str], Any]
-    ask_resume: Callable[[float], bool]
     make_backend: Callable[[str], Backend]
 
 
@@ -114,9 +111,6 @@ class Service:
             config.mappings,
             Fingerprinter(env.opener),
             config.threshold,
-            config.resume_mode,
-            self.player.seekTime,
-            env.ask_resume,
             self.log,
         )
         self.next_sync = self.next_save = env.mono()
@@ -188,12 +182,6 @@ class Service:
 def run_service() -> None:
     addon = xbmcaddon.Addon()
 
-    def ask_resume(position: float) -> bool:
-        text = addon.getLocalizedString(STRING_RESUME).format(
-            time.strftime("%H:%M:%S", time.gmtime(position))
-        )
-        return xbmcgui.Dialog().yesno(addon.getAddonInfo("name"), text)
-
     env = Env(
         addon=addon,
         local=VfsBackend(PROFILE, folders=()),
@@ -203,7 +191,6 @@ def run_service() -> None:
         rpc=make_rpc(xbmc.executeJSONRPC),
         friendly_name=lambda: xbmc.getInfoLabel("System.FriendlyName"),
         opener=xbmcvfs.File,
-        ask_resume=ask_resume,
         make_backend=VfsBackend,
     )
     Service(env, ServiceMonitor(), PlayerMonitor()).run()
