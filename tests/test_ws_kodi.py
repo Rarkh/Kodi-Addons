@@ -589,6 +589,35 @@ def test_stopping_right_at_the_start_clears_the_saved_position(env):
     assert state is not None and state.type == "reset"
 
 
+def test_stopping_before_the_stream_is_up_still_clears_the_saved_position(env):
+    """onPlayBackStarted comes first; the user stops before onAVStarted ever arrives."""
+    put_foreign_progress(env)
+    env.tracker.started(PATH, 0.0, 0.0)
+    env.tracker.stopped()
+    assert env.events()[-1].type == "reset"
+
+
+def test_the_late_stream_start_only_adds_position_and_duration(env):
+    put_foreign_progress(env)
+    env.tracker.started(PATH, 0.0, 0.0)
+    first = env.tracker.current
+    assert first is not None and first.had_saved
+    env.rig.clock.advance(3)
+    env.tracker.started(PATH, 600.0, 7000.0)  # onAVStarted: Kodi resumed at the saved position
+    assert env.tracker.current is first
+    assert (first.position, first.duration) == (600.0, 7000.0)
+    assert first.started_at < env.engine.mono()  # the stop-quickly clock keeps its first start
+    env.tracker.stopped()  # 3 s after the first start: not quick any more, so progress, no reset
+    assert env.events()[-1].type == "progress"
+
+
+def test_even_a_short_saved_position_is_cleared_by_a_quick_stop(env):
+    put_foreign_progress(env, position_s=1.5)
+    env.tracker.started(PATH, 0.0, 7000.0)
+    env.tracker.stopped()
+    assert env.events()[-1].type == "reset"
+
+
 def test_stopping_at_the_start_of_a_playback_from_the_beginning_clears_it_too(env):
     put_foreign_progress(env)  # the user answered Kodi's resume question with "from beginning"
     env.tracker.started(PATH, 0.0, 7000.0)
@@ -743,6 +772,24 @@ def test_player_callbacks_reach_the_tracker(player):
         ("ended",),
         ("tick", 12.5, 100.0),
     ]
+
+
+def test_early_start_notice_reaches_the_tracker_only_for_known_video(player):
+    tracker = RecordingTracker()
+    player.tracker = tracker  # type: ignore[assignment]
+    player.onPlayBackStarted()
+    assert tracker.calls == [("started", PATH, 0.0, 0.0)]
+    tracker.calls.clear()
+    player.isPlayingVideo = lambda: False  # type: ignore[method-assign]
+    player.onPlayBackStarted()
+    player.isPlayingVideo = lambda: True  # type: ignore[method-assign]
+
+    def unknown() -> str:
+        raise RuntimeError("no file yet")
+
+    player.getPlayingFile = unknown  # type: ignore[method-assign]
+    player.onPlayBackStarted()
+    assert tracker.calls == [] and tracker.logs == []
 
 
 def test_player_does_nothing_without_a_tracker(player):

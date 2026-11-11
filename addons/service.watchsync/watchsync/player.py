@@ -19,7 +19,6 @@ QUIET_START_S = 1.0
 # Stopping within this many seconds of the start clears a saved position (also after Kodi's
 # own resume put the playback at that position)
 QUICK_STOP_S = 1.0
-RESUME_TOLERANCE_S = 5.0
 
 
 @dataclass
@@ -53,10 +52,16 @@ class Tracker:
         self.current: Current | None = None
 
     def started(self, path: str, position: float, duration: float) -> None:
-        self.current = None
+        current, self.current = self.current, None
         if not is_trackable(path):
             return
         ref = to_media_id(path, self.mappings)
+        if current and current.media_id == ref.id and not current.watched:
+            # the early start notice came first (stopping before the audio/video stream is up
+            # still counts as a playback): only add what is known now
+            current.position, current.duration = position, duration
+            self.current = current
+            return
         fp = self.fingerprinter.get(path)
         previous = self.engine.lookup(ref.id, fp)
         cur = self.current = Current(
@@ -68,9 +73,7 @@ class Tracker:
             self.log(f"No path mapping for {ref.id}: matched by file name and folders", DEBUG)
         # Resuming is Kodi's own business: the saved position is in its database (applied by the
         # service), so Kodi asks where to continue. This add-on never jumps and never asks.
-        cur.had_saved = bool(
-            previous and previous.type == "progress" and previous.position_s > RESUME_TOLERANCE_S
-        )
+        cur.had_saved = bool(previous and previous.type == "progress")
 
     def _ratio(self, cur: Current) -> float:
         return cur.position / cur.duration if cur.duration > 0 else 0.0
@@ -162,6 +165,19 @@ class PlayerMonitor(xbmc.Player):
     def onAVStarted(self) -> None:
         assert self.tracker
         self.tracker.started(self.getPlayingFile(), self.getTime(), self.getTotalTime())
+
+    @_guard
+    def onPlayBackStarted(self) -> None:
+        """Earlier than onAVStarted, which can take seconds on a share: a very short playback
+        that is stopped before it must still be seen (it clears a saved position)."""
+        assert self.tracker
+        if not self.isPlayingVideo():
+            return
+        try:
+            path = self.getPlayingFile()
+        except RuntimeError:
+            return  # not known yet; onAVStarted follows
+        self.tracker.started(path, 0.0, 0.0)
 
     @_guard
     def onPlayBackPaused(self) -> None:
