@@ -132,6 +132,23 @@ mappings, show log, rebuild cache (read everything from the NAS again, unsent ev
 test NAS connection, check for updates (makes Kodi refresh its repositories now), write test (tries several ways of writing a file to the storage location and shows what Kodi answers). Menu and service talk through notifications and files in the profile; the
 service is the only one that writes events.
 
+## NAS permissions (important with several devices)
+
+Every device creates the folders `events/`, `devices/` and `snapshots/` itself if they are missing,
+and the NAS gives them to the user the NFS access is mapped to (often mode 755). A second device
+with a different NFS user then **cannot write** into them, although it can read and create files in
+the parent folder. The symptom is `cannot write ...: the write was refused`; *Test NAS connection*
+checks every folder and names the one that fails.
+
+Fix it once on the NAS, one of:
+
+- NFS export: map all users to one user (all_squash with a fixed anonuid/anongid) and give that
+  user write access.
+- Give the storage folder and its sub folders full access for everybody (mode 777, on Windows
+  `icacls <folder> /grant Jeder:(OI)(CI)F /T` for a share that maps this to unix rights).
+- Create the three folders once by hand (e.g. in Explorer on the share) so that they inherit the
+  rights of the parent folder.
+
 ## Tests
 
 `python -m pytest` (unit tests with a fake `xbmcvfs`, 100 % coverage). They cover media ids,

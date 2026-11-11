@@ -25,6 +25,8 @@ class BackendError(Exception):
 class Backend:
     """What the sync engine needs from a storage. Replace for e.g. an HTTP backend."""
 
+    folders: tuple[str, ...] = ()
+
     def ensure_layout(self) -> None:
         raise NotImplementedError
 
@@ -44,12 +46,16 @@ class Backend:
         raise NotImplementedError
 
     def probe(self, label: str) -> None:
-        """Write, read back and delete a test file; raise BackendError if that fails."""
+        """Write, read back and delete a test file in the storage root and in every folder.
+
+        Raise BackendError if that fails. A folder another device created can be read-only for
+        this device, so the root alone proves nothing."""
         name = f".probe-{label}.txt"
-        self.write_text("", name, "watchsync", overwrite=True)
-        if self.read_text("", name) != "watchsync":
-            raise BackendError("probe file differs")
-        self.delete("", name)
+        for folder in ("", *self.folders):
+            self.write_text(folder, name, "watchsync", overwrite=True)
+            if self.read_text(folder, name) != "watchsync":
+                raise BackendError(f"probe file in {folder or 'the root'} differs")
+            self.delete(folder, name)
 
 
 class VfsBackend(Backend):
@@ -131,7 +137,10 @@ class VfsBackend(Backend):
             file.close()
         if not written:
             self.vfs.delete(tmp)
-            raise BackendError(f"cannot write {tmp}: the write was refused")
+            raise BackendError(
+                f"cannot write {tmp}: the write was refused "
+                "(does this device have write permission for the folder on the NAS?)"
+            )
         back = self._read_back(tmp, data)
         if back != data:
             self.vfs.delete(tmp)

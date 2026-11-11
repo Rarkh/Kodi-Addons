@@ -157,6 +157,15 @@ def test_probe(vfs, monkeypatch):
         backend.probe("dev")
 
 
+def test_probe_checks_every_folder(vfs):
+    """The root may be writable while a folder created by another device is not."""
+    backend = make_backend(vfs)
+    backend.ensure_layout()
+    vfs.readonly.add("nfs://nas/WatchSync/devices/")
+    with pytest.raises(BackendError, match="devices/.*write permission"):
+        backend.probe("dev")
+
+
 def test_abstract_backend_has_no_implementation():
     base = Backend()
     for call in (
