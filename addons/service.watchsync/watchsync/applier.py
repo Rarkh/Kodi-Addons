@@ -278,16 +278,24 @@ class ManualChanges:
             return False
         item = payload.get("item") if isinstance(payload, dict) else None
         playcount = payload.get("playcount") if isinstance(payload, dict) else None
-        if not isinstance(item, dict) or isinstance(playcount, bool):
+        if (
+            not isinstance(item, dict)
+            or isinstance(playcount, bool)
+            or not isinstance(playcount, int)
+        ):
+            self.log(f"Ignored notification: {data[:300]}", DEBUG)
             return False
         kind, dbid = KINDS_BY_TYPE.get(item.get("type", "")), item.get("id")
-        if not kind or not isinstance(dbid, int) or not isinstance(playcount, int):
-            return False
-        if self.applier.is_echo(kind.item_type, dbid, playcount):
-            self.log(f"Ignored echo of our own change ({kind.item_type} {dbid})", DEBUG)
-            return False
-        path = self._path_of(kind, dbid)
+        if kind and isinstance(dbid, int):
+            if self.applier.is_echo(kind.item_type, dbid, playcount):
+                self.log(f"Ignored echo of our own change ({kind.item_type} {dbid})", DEBUG)
+                return False
+            path = self._path_of(kind, dbid)
+        else:
+            # not a library item (a file marked in a file list): the notification may name the file
+            path = str(item.get("file") or "")
         if not is_trackable(path):
+            self.log(f"Ignored notification without a usable file: {data[:300]}", DEBUG)
             return False
         ref = to_media_id(path, self.mappings)
         known = self.engine.lookup(ref.id, None)

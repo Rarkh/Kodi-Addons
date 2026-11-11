@@ -343,6 +343,31 @@ def test_manual_change_of_an_unmapped_file(kodi, clock):
     assert engine.recorded[0][1]["unmapped"] is True
 
 
+def manual_with_logs(kodi, clock):
+    applier, _ = make_applier(kodi, clock)
+    logs: list[str] = []
+    engine = FakeEngine()
+    manual = ManualChanges(kodi, MAPS, engine, applier, lambda msg, level=1: logs.append(msg))
+    return manual, engine, logs
+
+
+def test_manual_mark_of_a_file_outside_the_library_uses_the_file_of_the_notification(kodi, clock):
+    manual, engine, logs = manual_with_logs(kodi, clock)
+    file = "nfs://nas/Media/Show/S01/E01.mkv"
+    assert manual.handle(json.dumps({"item": {"type": "unknown", "file": file}, "playcount": 1}))
+    assert manual.handle(json.dumps({"item": {"file": file}, "playcount": 0}))
+    kinds = [(args[0], args[1]) for args, _ in engine.recorded]
+    assert kinds == [("Show/S01/E01.mkv", "watched"), ("Show/S01/E01.mkv", "unwatched")]
+    assert any("Manual change" in m for m in logs)
+
+
+def test_ignored_notifications_are_logged_for_debugging(kodi, clock):
+    manual, _, logs = manual_with_logs(kodi, clock)
+    assert not manual.handle(json.dumps({"item": {"type": "unknown"}, "playcount": 1}))
+    assert not manual.handle(json.dumps({"item": "x", "playcount": 1}))
+    assert sum("Ignored notification" in m for m in logs) == 2
+
+
 def test_same_playcount_as_the_state_creates_no_event(kodi, clock):
     manual, engine, _ = make_manual(kodi, clock, ev(kind="watched", playcount=1))
     assert not manual.handle(update(playcount=1))
@@ -484,6 +509,35 @@ def test_a_quick_look_at_a_file_does_not_overwrite_the_saved_position(env):
     env.tracker.stopped()
     assert env.events() == []
     assert env.engine.lookup("Filme/A.mkv", None) == saved
+
+
+def test_stopping_right_after_a_deliberate_start_from_the_beginning_clears_the_position():
+    """A saved position existed, the user said no to jumping there and stops at once."""
+    env = Env(Rig(), mode=1, answer=False)
+    put_foreign_progress(env)
+    env.tracker.started(PATH, 0.0, 7000.0)
+    env.tracker.tick(1.0, 7000.0)
+    env.tracker.stopped()
+    last = env.events()[-1]
+    assert (last.type, last.position_s) == ("reset", 0.0)
+    state = env.engine.lookup("Filme/A.mkv", None)
+    assert state is not None and state.type == "reset"
+
+
+def test_stopping_a_little_later_after_starting_from_the_beginning_is_normal_progress():
+    env = Env(Rig(), mode=1, answer=False)
+    put_foreign_progress(env)
+    env.tracker.started(PATH, 0.0, 7000.0)
+    env.tracker.tick(20.0, 7000.0)
+    env.tracker.stopped()
+    assert {(e.type, e.position_s) for e in env.events()} == {("progress", 20.0)}
+
+
+def test_a_quick_stop_without_saved_position_writes_nothing(env):
+    env.tracker.started(PATH, 0.0, 7000.0)
+    env.tracker.tick(1.0, 7000.0)
+    env.tracker.stopped()
+    assert env.events() == []
 
 
 def test_progress_is_recorded_from_five_seconds_on(env):

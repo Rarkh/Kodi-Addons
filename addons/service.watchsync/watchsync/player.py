@@ -14,8 +14,9 @@ from .events import Event
 from .logger import DEBUG, INFO, WARNING
 from .mediaid import Fingerprinter, Mapping, is_trackable, to_media_id
 
-# Below this position nothing is written: a playback that starts at 0 (resume not applied yet,
-# a quick look at a file) must not overwrite the saved state of the medium with "0"
+# Below this position no progress is written: a playback that starts at 0 (a quick look at a
+# file) must not overwrite the saved state of the medium with "0". Only a stop right after a
+# deliberate start from the beginning (a saved position existed) clears it: a "reset" event.
 QUIET_START_S = 5.0
 RESUME_TOLERANCE_S = 5.0
 RESUME_AUTO, RESUME_ASK = 0, 1
@@ -30,6 +31,9 @@ class Current:
     position: float
     playcount: int
     watched: bool = False
+    # a saved position existed but the playback began at the start (deliberately: stopping
+    # right away then clears the saved position)
+    restarted: bool = False
 
 
 class Tracker:
@@ -69,6 +73,11 @@ class Tracker:
             self.log(f"No path mapping for {ref.id}: matched by file name and folders", DEBUG)
         if previous:
             self._maybe_resume(cur, previous)
+            cur.restarted = (
+                previous.type == "progress"
+                and previous.position_s > RESUME_TOLERANCE_S
+                and cur.position <= RESUME_TOLERANCE_S
+            )
 
     def _maybe_resume(self, cur: Current, previous: Event) -> None:
         """Fallback: jump to the position another device saved, if it is the newest state.
@@ -136,6 +145,9 @@ class Tracker:
             return
         if self._ratio(cur) >= self.threshold:
             self._mark_watched(cur)
+        elif cur.position < QUIET_START_S:
+            if cur.restarted:
+                self._record(cur, "reset", True)
         else:
             self._record(cur, "progress", True)
 

@@ -32,7 +32,7 @@ Every add-on in this repository has its own version and uses
   UTC timestamp, applied to Kodi's database only when newer than what was applied before, with
   echo suppression, capture of manual watched/unwatched marks, resume point applied in advance
   and a fallback seek. Settings, program menu, path mappings, offline queue, local cache.
-  Test build 0.2.11 on the branch `dev`; not released on `main` yet.
+  Test build 0.2.12 on the branch `dev`; not released on `main` yet.
   New menu/settings action "Check for updates" (Kodi refreshes its repositories at once).
   New action "Write test (diagnosis)": tries several file names and write modes in the storage
   location and shows what Kodi answers.
@@ -54,6 +54,9 @@ Every add-on in this repository has its own version and uses
   with `Files.SetFileDetails`; the fallback seek stays as a safety net.
   "Playback started elsewhere" now defaults to "Ask first" (was: jump automatically). The log says
   which path was written for a file outside the library and what Kodi answered.
+  Stopping right after a deliberate start from the beginning (a saved position existed) clears the
+  saved position again (`reset`). Manual watched/unwatched marks on files outside the library are
+  taken from the notification if it names the file; ignored notifications are logged in debug mode.
   Writing waits for NFS attributes to settle before it counts a read-back as failed, and the
   error says whether the write was refused or what was read back.
 
