@@ -43,6 +43,18 @@ Every add-on in this repository has its own version and uses
 ### Changed
 - `tools/build_repo.py`: the MD5 checksum is marked as not security-relevant (Kodi needs MD5).
 
+## [service.watchsync 0.3.3]
+### Fixed
+- A device could not take over the state of files that another device plays from a location it
+  cannot translate (e.g. a tablet's local `/storage/...` path seen by a phone that only plays from
+  the NAS): nothing was written and the entry was never tried again. Files seen in a shown folder
+  now teach the path (one per location), and entries without a local path are tried again.
+- A device's own local path (e.g. `/storage/1234-5678/...`) is its own location now, so it resolves
+  to itself and no longer triggers learning and retries at every sync.
+- A library item is also written for the path of the file view: Kodi keeps the resume data of a
+  file per path, so the local copy in the library and the same file played from the share are
+  separate entries; only the library one was written, so the share showed no resume point.
+
 ## [service.watchsync 0.3.0]
 ### Added
 - First release. Keeps watch status (watched/unwatched, resume point) in sync between several Kodi
