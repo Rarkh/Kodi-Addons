@@ -167,19 +167,6 @@ class PlayerMonitor(xbmc.Player):
         self.tracker.started(self.getPlayingFile(), self.getTime(), self.getTotalTime())
 
     @_guard
-    def onPlayBackStarted(self) -> None:
-        """Earlier than onAVStarted, which can take seconds on a share: a very short playback
-        that is stopped before it must still be seen (it clears a saved position)."""
-        assert self.tracker
-        if not self.isPlayingVideo():
-            return
-        try:
-            path = self.getPlayingFile()
-        except RuntimeError:
-            return  # not known yet; onAVStarted follows
-        self.tracker.started(path, 0.0, 0.0)
-
-    @_guard
     def onPlayBackPaused(self) -> None:
         assert self.tracker
         self.tracker.paused(self.getTime())

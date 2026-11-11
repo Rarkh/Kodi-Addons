@@ -32,7 +32,7 @@ Every add-on in this repository has its own version and uses
   UTC timestamp, applied to Kodi's database only when newer than what was applied before, with
   echo suppression, capture of manual watched/unwatched marks, resume point applied in advance
   and a fallback seek. Settings, program menu, path mappings, offline queue, local cache.
-  Test build 0.2.16 on the branch `dev`; not released on `main` yet.
+  Test build 0.2.17 on the branch `dev`; not released on `main` yet.
   New menu/settings action "Check for updates" (Kodi refreshes its repositories at once).
   New action "Write test (diagnosis)": tries several file names and write modes in the storage
   location and shows what Kodi answers.
@@ -64,8 +64,7 @@ Every add-on in this repository has its own version and uses
   change since the last look (marked watched or unwatched in a file list) becomes an event, because
   Kodi does not have to announce such a change.
   A quick stop clears a saved position of any size (was: more than 5 s).
-  Playback is noticed at the early start notice (onPlayBackStarted), not only when the stream is up
-  (onAVStarted, seconds later on a share), so a very short playback also clears a saved position.
+  (0.2.16 used the early start notice onPlayBackStarted; removed again in 0.2.17 after a Kodi freeze.)
   Writing waits for NFS attributes to settle before it counts a read-back as failed, and the
   error says whether the write was refused or what was read back.
 

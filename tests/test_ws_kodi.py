@@ -774,24 +774,6 @@ def test_player_callbacks_reach_the_tracker(player):
     ]
 
 
-def test_early_start_notice_reaches_the_tracker_only_for_known_video(player):
-    tracker = RecordingTracker()
-    player.tracker = tracker  # type: ignore[assignment]
-    player.onPlayBackStarted()
-    assert tracker.calls == [("started", PATH, 0.0, 0.0)]
-    tracker.calls.clear()
-    player.isPlayingVideo = lambda: False  # type: ignore[method-assign]
-    player.onPlayBackStarted()
-    player.isPlayingVideo = lambda: True  # type: ignore[method-assign]
-
-    def unknown() -> str:
-        raise RuntimeError("no file yet")
-
-    player.getPlayingFile = unknown  # type: ignore[method-assign]
-    player.onPlayBackStarted()
-    assert tracker.calls == [] and tracker.logs == []
-
-
 def test_player_does_nothing_without_a_tracker(player):
     player.onAVStarted()
     player.poll()  # no exception
