@@ -277,6 +277,14 @@ class KodiApplier:
             self._library = None  # the list may be out of date (item removed)
             return None
 
+    def _also_file(self, event: Event, resolver: PathResolver, index: dict[str, Any]) -> None:
+        """The same file opened from a file view has its own resume data in Kodi: it is kept per
+        path, not per library item. If this device can open the file by another path than the
+        library item's (e.g. the share, while the library has the local copy), write that too."""
+        path = resolver.resolve(event.media_id)
+        if path and to_media_id(path, self.mappings).id not in index:
+            self._apply_file(event, resolver)
+
     def apply(
         self,
         events: Iterable[Event],
@@ -307,6 +315,8 @@ class KodiApplier:
             ok = self._write(event, target, resolver)
             if ok is None:
                 continue
+            if target and event.unmapped:
+                self._also_file(event, resolver, lists[0])
             applied[event.media_id] = applied_entry(event, ok, "library" if target else "file")
             done += ok
         self.log(f"Applied {done} of {len(pending)} changes to Kodi", INFO)

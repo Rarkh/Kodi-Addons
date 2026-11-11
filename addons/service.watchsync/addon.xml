@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<addon id="service.watchsync" name="WatchSync" version="0.3.2" provider-name="Rarkh">
+<addon id="service.watchsync" name="WatchSync" version="0.3.3" provider-name="Rarkh">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
     </requires>
