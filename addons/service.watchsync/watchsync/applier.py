@@ -172,8 +172,12 @@ class KodiApplier:
         self.rpc(kind.set_method, {kind.id_key: dbid, **values})
 
     def _apply_file(self, event: Event) -> bool:
-        """Files outside the library: Files.SetFileDetails (may not work, see README)."""
-        path = event.media_id if event.unmapped else from_media_id(event.media_id, self.mappings)
+        """Files outside the library: Files.SetFileDetails for mapped ids (untested, see README).
+
+        An unmapped id is the full path another device used; it says nothing about the path here
+        (other protocol or host), and writing details for it would only look like success. The
+        fallback seek at the start of the playback covers those files."""
+        path = None if event.unmapped else from_media_id(event.media_id, self.mappings)
         if not path:
             return False
         try:

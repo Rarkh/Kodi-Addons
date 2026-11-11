@@ -193,15 +193,26 @@ def test_echo_suppression_window(kodi, clock):
     assert not applier.is_echo("movie", 1, 1)
 
 
-def test_files_outside_the_library_use_set_file_details(kodi, clock):
+def test_files_outside_the_library_use_set_file_details_for_mapped_paths(kodi, clock):
     applier, _ = make_applier(kodi, clock)
     applied: dict = {}
     mapped = ev(media="Other/B.mkv", position_s=10.0)
-    unmapped = ev(media="smb://x/y/C.mkv", unmapped=True, kind="watched", playcount=1)
-    assert applier.apply([mapped, unmapped], applied) == 2
-    files = [c[1]["file"] for c in kodi.sets()]
-    assert files == ["nfs://nas/Media/Other/B.mkv", "smb://x/y/C.mkv"]
-    assert all(entry["ok"] for entry in applied.values())
+    assert applier.apply([mapped], applied) == 1
+    assert [c[1]["file"] for c in kodi.sets()] == ["nfs://nas/Media/Other/B.mkv"]
+    assert applied["Other/B.mkv"]["ok"]
+
+
+def test_foreign_unmapped_path_is_not_written_to_kodi_and_leaves_the_seek_to_the_player(
+    kodi, clock
+):
+    """A path another device used says nothing about the path here: no fake success, so the
+    fallback seek at the start of the playback still runs."""
+    applier, _ = make_applier(kodi, clock)
+    applied: dict = {}
+    foreign = ev(media="smb://x/y/C.mkv", unmapped=True, kind="watched", playcount=1)
+    assert applier.apply([foreign], applied) == 0
+    assert kodi.sets() == []
+    assert not applied["smb://x/y/C.mkv"]["ok"]
 
 
 def test_set_file_details_failure_is_logged_once_and_not_retried(kodi, clock):

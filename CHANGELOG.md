@@ -32,7 +32,7 @@ Every add-on in this repository has its own version and uses
   UTC timestamp, applied to Kodi's database only when newer than what was applied before, with
   echo suppression, capture of manual watched/unwatched marks, resume point applied in advance
   and a fallback seek. Settings, program menu, path mappings, offline queue, local cache.
-  Test build 0.2.7 on the branch `dev`; not released on `main` yet.
+  Test build 0.2.8 on the branch `dev`; not released on `main` yet.
   New menu/settings action "Check for updates" (Kodi refreshes its repositories at once).
   New action "Write test (diagnosis)": tries several file names and write modes in the storage
   location and shows what Kodi answers.
@@ -45,6 +45,8 @@ Every add-on in this repository has its own version and uses
   folders (protocol, host, share, drive and letter case ignored). Path mappings are optional now.
   "Check for updates" now reads the repositories itself and shows the installed and the offered
   version before it asks Kodi to refresh.
+  Files outside the library: a foreign full path is no longer written to Kodi as if it were this
+  device's path; that only looked like success and stopped the fallback seek.
   Writing waits for NFS attributes to settle before it counts a read-back as failed, and the
   error says whether the write was refused or what was read back.
 
