@@ -1,0 +1,155 @@
+"""Program add-on menu and RunScript actions (called from the settings dialog)."""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+import xbmc
+import xbmcaddon
+import xbmcgui
+
+from .backend import BackendError, VfsBackend, optional_text
+from .config import SETTING_MAPPINGS, load_config
+from .logger import LOG_FILE
+from .mediaid import ARROW, Mapping, format_mappings, parse_mappings
+from .runtime import NOTIFY_REBUILD, NOTIFY_SYNC, PROFILE, STATUS_FILE
+
+ADDON = xbmcaddon.Addon()
+HEADING = ADDON.getAddonInfo("name")
+FOLDER_DIALOG = 0
+
+
+def tr(string_id: int, *args: Any) -> str:
+    text = ADDON.getLocalizedString(string_id)
+    return text.format(*args) if args else text
+
+
+def _local() -> VfsBackend:
+    return VfsBackend(PROFILE, folders=())
+
+
+def sync_now() -> None:
+    xbmc.executebuiltin(NOTIFY_SYNC)
+    xbmcgui.Dialog().notification(HEADING, tr(30050))
+
+
+def rebuild_cache() -> None:
+    if xbmcgui.Dialog().yesno(HEADING, tr(30052)):
+        xbmc.executebuiltin(NOTIFY_REBUILD)
+        xbmcgui.Dialog().notification(HEADING, tr(30051))
+
+
+def show_status() -> None:
+    text = optional_text(_local(), "", STATUS_FILE)
+    if not text:
+        xbmcgui.Dialog().ok(HEADING, tr(30056))
+        return
+    status = json.loads(text)
+    offset = status.get("clock_offset_s")
+    xbmcgui.Dialog().textviewer(
+        HEADING,
+        tr(
+            30072,
+            status.get("device", ""),
+            status.get("storage_path", ""),
+            tr(30074) if status.get("online") else tr(30075),
+            status.get("last_sync", "-") or "-",
+            status.get("queued", 0),
+            status.get("media", 0),
+            status.get("unmapped", 0),
+            ", ".join(status.get("defective", [])) or "-",
+            "-" if offset is None else f"{offset:.0f} s",
+        ),
+    )
+
+
+def show_log() -> None:
+    text = optional_text(_local(), "", LOG_FILE)
+    if text:
+        xbmcgui.Dialog().textviewer(HEADING, text)
+    else:
+        xbmcgui.Dialog().ok(HEADING, tr(30073))
+
+
+def test_connection() -> None:
+    config = load_config(ADDON, xbmc.getInfoLabel("System.FriendlyName"))
+    if not config.storage_path:
+        xbmcgui.Dialog().ok(HEADING, tr(30055))
+        return
+    backend = VfsBackend(config.storage_path)
+    try:
+        backend.ensure_layout()
+        backend.probe(config.device)
+    except BackendError as exc:
+        xbmcgui.Dialog().ok(HEADING, tr(30054, exc))
+        return
+    xbmcgui.Dialog().ok(HEADING, tr(30053))
+
+
+def ask_mapping(current: Mapping | None) -> Mapping | None:
+    """Ask for a path on this device and an optional NAS-relative base."""
+    dialog = xbmcgui.Dialog()
+    how = dialog.select(tr(30065), [tr(30063), tr(30064)])
+    if how < 0:
+        return None
+    if how == 0:
+        prefix = dialog.browseSingle(FOLDER_DIALOG, tr(30065), "video")
+    else:
+        prefix = dialog.input(tr(30065), current.raw if current else "")
+    if not prefix:
+        return None
+    base = dialog.input(tr(30066), current.base.rstrip("/") if current else "")
+    parsed = parse_mappings(prefix + (ARROW + base if base else ""))
+    return parsed[0] if parsed else None
+
+
+def _label(mapping: Mapping) -> str:
+    return mapping.raw + (f"  ->  {mapping.base}" if mapping.base else "")
+
+
+def _change_mapping(mappings: list[Mapping], choice: int) -> None:
+    action = xbmcgui.Dialog().select(HEADING, [tr(30061), tr(30062)])
+    if action == 0:
+        edited = ask_mapping(mappings[choice])
+        if edited:
+            mappings[choice] = edited
+    elif action == 1:
+        del mappings[choice]
+
+
+def edit_mappings() -> None:
+    while True:
+        mappings = parse_mappings(ADDON.getSettingString(SETTING_MAPPINGS))
+        choice = xbmcgui.Dialog().select(HEADING, [*map(_label, mappings), tr(30060)])
+        if choice < 0:
+            return
+        if choice == len(mappings):
+            added = ask_mapping(None)
+            if added:
+                mappings.append(added)
+        else:
+            _change_mapping(mappings, choice)
+        ADDON.setSettingString(SETTING_MAPPINGS, format_mappings(mappings))
+
+
+ACTIONS = {
+    "sync": (30041, sync_now),
+    "status": (30042, show_status),
+    "mappings": (30043, edit_mappings),
+    "log": (30044, show_log),
+    "rebuild": (30045, rebuild_cache),
+    "test": (30046, test_connection),
+}
+
+
+def run(argv: list[str]) -> None:
+    """RunScript(service.watchsync,<action>) runs one action; otherwise show the menu."""
+    name = argv[1] if len(argv) > 1 else ""
+    if name not in ACTIONS:
+        keys = list(ACTIONS)
+        choice = xbmcgui.Dialog().select(HEADING, [tr(ACTIONS[k][0]) for k in keys])
+        if choice < 0:
+            return
+        name = keys[choice]
+    ACTIONS[name][1]()

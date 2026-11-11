@@ -4,11 +4,15 @@
         <import addon="xbmc.python" version="3.0.0"/>
     </requires>
     <extension point="xbmc.service" library="service.py"/>
+    <extension point="xbmc.python.script" library="default.py"/>
+    <extension point="xbmc.python.pluginsource" library="default.py">
+        <provides>executable</provides>
+    </extension>
     <extension point="xbmc.addon.metadata">
         <summary lang="de_DE">Synchronisiert den Wiedergabestatus</summary>
         <summary lang="en_GB">Synchronises watch status</summary>
-        <description lang="de_DE">WatchSync läuft als Hintergrunddienst und reagiert auf Wiedergabe-Ereignisse.</description>
-        <description lang="en_GB">WatchSync runs as a background service and reacts to playback events.</description>
+        <description lang="de_DE">WatchSync läuft als Hintergrunddienst und legt Wiedergabestatus (gesehen, Fortsetzungspunkt) als kleine Ereignisdateien auf einem NAS ab. So bleiben mehrere Kodi-Installationen synchron, auch für Dateien außerhalb der Bibliothek. Die Medien werden über ihren Pfad auf dem NAS erkannt, nicht über Datenbank-IDs. Es werden nur Dateien auf der Freigabe benötigt, keine Serversoftware.</description>
+        <description lang="en_GB">WatchSync runs as a background service and stores watch status (watched, resume point) as small event files on a NAS. This keeps several Kodi installations in sync, including files that are not in the library. Media are recognised by their path on the NAS, not by database ids. Only files on the share are needed, no server software.</description>
         <platform>all</platform>
         <license>MIT</license>
     </extension>

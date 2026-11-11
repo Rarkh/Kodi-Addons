@@ -4,9 +4,181 @@ msgstr ""
 "Language: de_DE\n"
 
 msgctxt "#30000"
-msgid "General"
+msgid "Allgemein"
 msgstr "Allgemein"
 
 msgctxt "#30001"
-msgid "Enable synchronisation"
-msgstr "Synchronisierung aktivieren"
+msgid "Synchronisation aktivieren"
+msgstr "Synchronisation aktivieren"
+
+msgctxt "#30002"
+msgid "Speicherort (NAS-Ordner)"
+msgstr "Speicherort (NAS-Ordner)"
+
+msgctxt "#30003"
+msgid "Gerätename"
+msgstr "Gerätename"
+
+msgctxt "#30004"
+msgid "Auf neue Ereignisse prüfen alle (Sekunden)"
+msgstr "Auf neue Ereignisse prüfen alle (Sekunden)"
+
+msgctxt "#30005"
+msgid "Position sichern alle (Sekunden)"
+msgstr "Position sichern alle (Sekunden)"
+
+msgctxt "#30006"
+msgid "Als gesehen markieren ab (%)"
+msgstr "Als gesehen markieren ab (%)"
+
+msgctxt "#30007"
+msgid "Wiedergabe auf anderem Gerät gestartet"
+msgstr "Wiedergabe auf anderem Gerät gestartet"
+
+msgctxt "#30008"
+msgid "Automatisch zur gespeicherten Position springen"
+msgstr "Automatisch zur gespeicherten Position springen"
+
+msgctxt "#30009"
+msgid "Vorher fragen"
+msgstr "Vorher fragen"
+
+msgctxt "#30010"
+msgid "Lokalen Cache verwenden"
+msgstr "Lokalen Cache verwenden"
+
+msgctxt "#30011"
+msgid "Log-Level"
+msgstr "Log-Level"
+
+msgctxt "#30012"
+msgid "Normal"
+msgstr "Normal"
+
+msgctxt "#30013"
+msgid "Debug"
+msgstr "Debug"
+
+msgctxt "#30020"
+msgid "Wiedergabe"
+msgstr "Wiedergabe"
+
+msgctxt "#30021"
+msgid "Erweitert"
+msgstr "Erweitert"
+
+msgctxt "#30022"
+msgid "Pfad-Mappings (Präfix oder Präfix=>Basis, getrennt durch |)"
+msgstr "Pfad-Mappings (Präfix oder Präfix=>Basis, getrennt durch |)"
+
+msgctxt "#30030"
+msgid "NAS-Verbindung testen"
+msgstr "NAS-Verbindung testen"
+
+msgctxt "#30031"
+msgid "Pfad-Mappings bearbeiten"
+msgstr "Pfad-Mappings bearbeiten"
+
+msgctxt "#30040"
+msgid "WatchSync"
+msgstr "WatchSync"
+
+msgctxt "#30041"
+msgid "Jetzt synchronisieren"
+msgstr "Jetzt synchronisieren"
+
+msgctxt "#30042"
+msgid "Status anzeigen"
+msgstr "Status anzeigen"
+
+msgctxt "#30043"
+msgid "Pfad-Mappings bearbeiten"
+msgstr "Pfad-Mappings bearbeiten"
+
+msgctxt "#30044"
+msgid "Protokoll anzeigen"
+msgstr "Protokoll anzeigen"
+
+msgctxt "#30045"
+msgid "Cache neu aufbauen"
+msgstr "Cache neu aufbauen"
+
+msgctxt "#30046"
+msgid "NAS-Verbindung testen"
+msgstr "NAS-Verbindung testen"
+
+msgctxt "#30050"
+msgid "Synchronisation angefordert"
+msgstr "Synchronisation angefordert"
+
+msgctxt "#30051"
+msgid "Neuaufbau des Caches angefordert"
+msgstr "Neuaufbau des Caches angefordert"
+
+msgctxt "#30052"
+msgid "Alle Daten erneut vom NAS lesen? Noch nicht gesendete Ereignisse bleiben erhalten."
+msgstr "Alle Daten erneut vom NAS lesen? Noch nicht gesendete Ereignisse bleiben erhalten."
+
+msgctxt "#30053"
+msgid "Der NAS-Ordner kann gelesen und beschrieben werden."
+msgstr "Der NAS-Ordner kann gelesen und beschrieben werden."
+
+msgctxt "#30054"
+msgid "Verbindung fehlgeschlagen: {0}"
+msgstr "Verbindung fehlgeschlagen: {0}"
+
+msgctxt "#30055"
+msgid "In den Einstellungen ist kein Speicherort gesetzt."
+msgstr "In den Einstellungen ist kein Speicherort gesetzt."
+
+msgctxt "#30056"
+msgid "Noch kein Status. Läuft der Dienst und ist er aktiviert?"
+msgstr "Noch kein Status. Läuft der Dienst und ist er aktiviert?"
+
+msgctxt "#30060"
+msgid "Mapping hinzufügen..."
+msgstr "Mapping hinzufügen..."
+
+msgctxt "#30061"
+msgid "Bearbeiten"
+msgstr "Bearbeiten"
+
+msgctxt "#30062"
+msgid "Löschen"
+msgstr "Löschen"
+
+msgctxt "#30063"
+msgid "Durchsuchen..."
+msgstr "Durchsuchen..."
+
+msgctxt "#30064"
+msgid "Pfad eingeben"
+msgstr "Pfad eingeben"
+
+msgctxt "#30065"
+msgid "Pfad auf diesem Gerät (Anfang des Pfads)"
+msgstr "Pfad auf diesem Gerät (Anfang des Pfads)"
+
+msgctxt "#30066"
+msgid "NAS-relative Basis (optional, meist leer)"
+msgstr "NAS-relative Basis (optional, meist leer)"
+
+msgctxt "#30070"
+msgid "Bei {0} fortsetzen, wo auf einem anderen Gerät gestoppt wurde?"
+msgstr "Bei {0} fortsetzen, wo auf einem anderen Gerät gestoppt wurde?"
+
+msgctxt "#30072"
+msgid "Gerät: {0}\nNAS-Ordner: {1}\nVerbindung: {2}\nLetzte Synchronisation: {3}\nEreignisse zum Senden: {4}\nBekannte Medien: {5}\nMedien ohne Pfad-Mapping: {6}\nDefekte Dateien: {7}\nZeitabweichung zum NAS: {8}"
+msgstr "Gerät: {0}\nNAS-Ordner: {1}\nVerbindung: {2}\nLetzte Synchronisation: {3}\nEreignisse zum Senden: {4}\nBekannte Medien: {5}\nMedien ohne Pfad-Mapping: {6}\nDefekte Dateien: {7}\nZeitabweichung zum NAS: {8}"
+
+msgctxt "#30073"
+msgid "Das Protokoll ist leer."
+msgstr "Das Protokoll ist leer."
+
+msgctxt "#30074"
+msgid "online"
+msgstr "online"
+
+msgctxt "#30075"
+msgid "offline"
+msgstr "offline"

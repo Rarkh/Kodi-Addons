@@ -10,3 +10,175 @@ msgstr "General"
 msgctxt "#30001"
 msgid "Enable synchronisation"
 msgstr "Enable synchronisation"
+
+msgctxt "#30002"
+msgid "Storage location (NAS folder)"
+msgstr "Storage location (NAS folder)"
+
+msgctxt "#30003"
+msgid "Device name"
+msgstr "Device name"
+
+msgctxt "#30004"
+msgid "Check for new events every (seconds)"
+msgstr "Check for new events every (seconds)"
+
+msgctxt "#30005"
+msgid "Save position every (seconds)"
+msgstr "Save position every (seconds)"
+
+msgctxt "#30006"
+msgid "Mark as watched from (%)"
+msgstr "Mark as watched from (%)"
+
+msgctxt "#30007"
+msgid "Playback started elsewhere"
+msgstr "Playback started elsewhere"
+
+msgctxt "#30008"
+msgid "Jump to the saved position automatically"
+msgstr "Jump to the saved position automatically"
+
+msgctxt "#30009"
+msgid "Ask first"
+msgstr "Ask first"
+
+msgctxt "#30010"
+msgid "Use local cache"
+msgstr "Use local cache"
+
+msgctxt "#30011"
+msgid "Log level"
+msgstr "Log level"
+
+msgctxt "#30012"
+msgid "Normal"
+msgstr "Normal"
+
+msgctxt "#30013"
+msgid "Debug"
+msgstr "Debug"
+
+msgctxt "#30020"
+msgid "Playback"
+msgstr "Playback"
+
+msgctxt "#30021"
+msgid "Advanced"
+msgstr "Advanced"
+
+msgctxt "#30022"
+msgid "Path mappings (prefix or prefix=>base, separated by |)"
+msgstr "Path mappings (prefix or prefix=>base, separated by |)"
+
+msgctxt "#30030"
+msgid "Test NAS connection"
+msgstr "Test NAS connection"
+
+msgctxt "#30031"
+msgid "Edit path mappings"
+msgstr "Edit path mappings"
+
+msgctxt "#30040"
+msgid "WatchSync"
+msgstr "WatchSync"
+
+msgctxt "#30041"
+msgid "Sync now"
+msgstr "Sync now"
+
+msgctxt "#30042"
+msgid "Show status"
+msgstr "Show status"
+
+msgctxt "#30043"
+msgid "Edit path mappings"
+msgstr "Edit path mappings"
+
+msgctxt "#30044"
+msgid "Show log"
+msgstr "Show log"
+
+msgctxt "#30045"
+msgid "Rebuild cache"
+msgstr "Rebuild cache"
+
+msgctxt "#30046"
+msgid "Test NAS connection"
+msgstr "Test NAS connection"
+
+msgctxt "#30050"
+msgid "Synchronisation requested"
+msgstr "Synchronisation requested"
+
+msgctxt "#30051"
+msgid "Cache rebuild requested"
+msgstr "Cache rebuild requested"
+
+msgctxt "#30052"
+msgid "Read all data from the NAS again? Events not yet sent are kept."
+msgstr "Read all data from the NAS again? Events not yet sent are kept."
+
+msgctxt "#30053"
+msgid "The NAS folder can be read and written."
+msgstr "The NAS folder can be read and written."
+
+msgctxt "#30054"
+msgid "Connection failed: {0}"
+msgstr "Connection failed: {0}"
+
+msgctxt "#30055"
+msgid "No storage location is set in the settings."
+msgstr "No storage location is set in the settings."
+
+msgctxt "#30056"
+msgid "No status yet. Is the service running and enabled?"
+msgstr "No status yet. Is the service running and enabled?"
+
+msgctxt "#30060"
+msgid "Add mapping..."
+msgstr "Add mapping..."
+
+msgctxt "#30061"
+msgid "Edit"
+msgstr "Edit"
+
+msgctxt "#30062"
+msgid "Delete"
+msgstr "Delete"
+
+msgctxt "#30063"
+msgid "Browse..."
+msgstr "Browse..."
+
+msgctxt "#30064"
+msgid "Type a path"
+msgstr "Type a path"
+
+msgctxt "#30065"
+msgid "Path on this device (start of the path)"
+msgstr "Path on this device (start of the path)"
+
+msgctxt "#30066"
+msgid "NAS-relative base (optional, usually empty)"
+msgstr "NAS-relative base (optional, usually empty)"
+
+msgctxt "#30070"
+msgid "Continue at {0} where it was stopped on another device?"
+msgstr "Continue at {0} where it was stopped on another device?"
+
+msgctxt "#30072"
+msgid "Device: {0}\nNAS folder: {1}\nConnection: {2}\nLast synchronisation: {3}\nEvents waiting to be sent: {4}\nKnown media: {5}\nMedia without path mapping: {6}\nDefective files: {7}\nClock difference to the NAS: {8}"
+msgstr "Device: {0}\nNAS folder: {1}\nConnection: {2}\nLast synchronisation: {3}\nEvents waiting to be sent: {4}\nKnown media: {5}\nMedia without path mapping: {6}\nDefective files: {7}\nClock difference to the NAS: {8}"
+
+msgctxt "#30073"
+msgid "The log is empty."
+msgstr "The log is empty."
+
+msgctxt "#30074"
+msgid "online"
+msgstr "online"
+
+msgctxt "#30075"
+msgid "offline"
+msgstr "offline"

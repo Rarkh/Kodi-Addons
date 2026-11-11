@@ -1,0 +1,166 @@
+# WatchSync
+
+Kodi 21 (Omega) add-on that keeps watch status (watched/unwatched, resume point) in sync between
+several Kodi installations (Android, Windows, Linux, CoreELEC, LibreELEC). The status lives as
+small files on a NAS share. Nothing runs on the NAS; only the Kodi Python API and the Python
+standard library are used.
+
+- Media are recognised by their **path on the NAS**, never by Kodi database ids.
+- Files that are **not in the Kodi library** are tracked too (played from an NFS/SMB source).
+- Status 0.1: development version, see "What still has to be tested on real devices".
+
+## Architecture: immutable event files
+
+```
+WatchSync/events/<device>_<seq 6 digits>.json    one file = one event, written once
+WatchSync/devices/<device>.json                  name, last contact, last sequence number
+WatchSync/snapshots/<device>.json                condensed own state
+```
+
+There is no file locking on a NAS, so there is nothing to lock:
+
+1. A device only writes its own files and never overwrites a foreign file.
+2. Writing: `<name>.tmp`, read back and compare, then rename to `<name>.json`. Readers ignore
+   `.tmp` files and files they cannot parse yet (retry at the next round, after 5 failed
+   attempts the file is marked defective and logged).
+3. Every device remembers per foreign device the highest sequence number it has processed.
+4. Conflicts: per medium the event with the **newest UTC timestamp** wins (not the largest
+   position, so rewinding on purpose works). Equal timestamps: the alphabetically larger device
+   id wins. Events more than 24 h in the future are ignored and logged.
+5. Clean-up: a device condenses and deletes only its **own** old events, after it has written
+   its snapshot (from 100 own event files on).
+6. At start the add-on compares the device clock with the file time of the NAS
+   (`xbmcvfs.Stat`) and logs a warning if they differ by more than 2 minutes.
+7. Progress events go to the NAS at most once per 60 s per medium; in between the position is
+   only saved locally. Pause, stop and end always write. Local-only progress left over by a
+   crash is sent at the next start.
+
+Event format (version 1, `type` = `progress | watched | unwatched | reset`):
+
+```json
+{"v": 1, "device": "android-wohnzimmer", "seq": 42, "ts": "2026-11-10T11:47:03.512Z",
+ "type": "progress", "media": {"id": "Filme/Alien.mkv", "fp": "s=4812345678;h=9f2c...;"},
+ "position_s": 3120.5, "duration_s": 7020.0, "playcount": 0}
+```
+
+Merging groups events per medium: same `media.id`, or the same fingerprint under different ids
+(moved/renamed file). A device never reuses a sequence number; if the local cache is lost it
+continues after everything of its own it finds on the NAS.
+
+### Modules (`watchsync/`)
+
+| Module       | Task                                                                    |
+|--------------|-------------------------------------------------------------------------|
+| `mediaid`    | path mappings, media id, fingerprint (size + SHA-1 of first/last 64 KB) |
+| `events`     | event and snapshot format, strict parsing                               |
+| `merge`      | merge and conflict rules                                                |
+| `backend`    | storage interface and the `xbmcvfs` backend (replaceable, e.g. HTTP)    |
+| `store`      | local cache in the profile (counter, queue, processed events, applied)  |
+| `engine`     | queue/upload, reading, snapshots, clean-up, recovery                    |
+| `applier`    | writes the NAS state into Kodi's database, notices manual changes       |
+| `player`     | `xbmc.Player` adapter and the playback tracker                          |
+| `runtime`    | the service loop; `menu` is the program add-on entry                    |
+
+## Media id and path mappings
+
+`nfs://192.168.178.57/RAID5/Filme/Alien.mkv`, `R:\Filme\Alien.mkv` and
+`/media/nas/Filme/Alien.mkv` should all become `Filme/Alien.mkv`. For that every device lists the
+beginnings of the paths it sees:
+
+```
+nfs://192.168.178.57/RAID5/        on the Android box
+R:\                                on Windows
+/media/nas/                        on Linux
+nfs://192.168.178.57/RAID5/Serien/=>Series      optional: "prefix=>base" puts a base in front
+```
+
+Entries are separated by `|` in the setting (or edit them in the menu *Edit path mappings*).
+The longest matching prefix wins, the comparison ignores case, URL escapes are decoded and
+credentials (`smb://user:pw@`) are never stored. Without a matching mapping the complete path is
+used and the event gets `"unmapped": true` (log and status show how many such media exist; they
+only match on devices that see the identical path). The file name alone is never the id.
+
+## What happens on a device
+
+- **Playback:** `onAVStarted`, pause, stop and end create events (also for files that are not in
+  the library). The position is saved locally every N seconds (default 10), at pause/stop/end an
+  event is written. From 90 % (setting) or at the end the medium counts as watched
+  (`playcount` + 1); stopping within the first 5 s resets the resume point.
+- **Kodi start and every sync interval (default 30 s):** the NAS state is read and merged.
+
+### Reconciling with Kodi's own database
+
+The NAS is the truth; Kodi's database is only the display on this device.
+
+1. The profile keeps a list "last set by me in Kodi" (id, playcount, position, timestamp).
+   An entry is written to Kodi only if its timestamp is **newer** than that list says.
+2. **Echo suppression:** before writing playcount/resume by JSON-RPC the value is remembered.
+   A `VideoLibrary.OnUpdate` with exactly this playcount within 5 s is ignored and creates no event.
+3. **Manual changes:** marking a library item watched/unwatched in Kodi arrives as
+   `VideoLibrary.OnUpdate`; the file is resolved with `Get...Details` and a `watched` or
+   `unwatched` event is created (not if the state on the NAS already has this playcount, e.g. the
+   value Kodi writes itself at the end of a playback).
+4. **Resume point in advance:** the NAS state is applied to Kodi's database at start and at
+   every sync, so Kodi's own "resume or start from beginning" works. `seekTime()` after
+   `onAVStarted` is only the fallback (file without library entry, or applying did not work).
+   Setting *Playback started elsewhere* (jump automatically / ask first) controls that fallback.
+5. Positions Kodi writes itself at stop are harmless: the add-on writes its own event with the
+   same value.
+6. While a medium is **playing**, foreign events for it are not applied to Kodi; they wait and are
+   compared with the own stop event by the merge rules afterwards.
+7. **Other sync add-ons (e.g. Trakt)** change the same fields. Disable them on devices that run
+   WatchSync.
+
+Not in Phase 1: repository set-up, Docker/HTTP backend, series special cases beyond the path id.
+
+## Settings
+
+| Setting                    | Default | Meaning                                                      |
+|----------------------------|---------|--------------------------------------------------------------|
+| Storage location           | -       | NAS folder, e.g. `nfs://192.168.178.57/RAID5/KODI-Files/WatchSync/` |
+| Device name                | Kodi name | unique id (a-z, 0-9, `-`); derived from the Kodi name if empty |
+| Path mappings              | -       | see above                                                    |
+| Check for new events every | 30 s    | sync interval                                                |
+| Save position every        | 10 s    | local position saving while playing                          |
+| Mark as watched from       | 90 %    |                                                              |
+| Playback started elsewhere | automatic | fallback seek: automatically or ask first                  |
+| Use local cache            | on      | off: queue and state are not kept between restarts           |
+| Log level                  | normal  | debug adds details to the Kodi log                           |
+
+Menu (*Programs > WatchSync*, also buttons in the settings): sync now, show status, edit path
+mappings, show log, rebuild cache (read everything from the NAS again, unsent events are kept),
+test NAS connection. Menu and service talk through notifications and files in the profile; the
+service is the only one that writes events.
+
+## Tests
+
+`python -m pytest` (unit tests with a fake `xbmcvfs`, 100 % coverage). They cover media ids,
+format, merge and conflict rules, snapshots, tmp+rename, fault tolerance, offline queue, echo
+suppression, "NAS newer than applied" and "defer while playing" with mock timestamps.
+
+### Trying it with two real Kodi devices
+
+1. Install the add-on on both, give each a different device name and the **same** storage
+   location; set the path mappings so that both see the same `media.id` (status shows media
+   without mapping). *Test NAS connection* must succeed on both.
+2. Play a movie from the share on device A for a minute, pause. On B: within 30 s the resume
+   point appears (library item) or the fallback seek happens when starting the file.
+3. Mark something watched on B; A shows it after the next sync. Mark it unwatched on A again.
+4. Rewind on purpose on B (stop at 0:30 after A was at 20:00): A must follow, not keep 20:00.
+5. Pull the network cable while playing, stop, reconnect: the status shows the queued events,
+   they are sent. Look at `events/` on the NAS: only `.json` files and no `.tmp` leftovers.
+6. Check the clock warning: set one device's time wrong, see the log entry.
+
+## What still has to be tested on real devices
+
+Everything was tested with a fake `xbmcvfs` and fake JSON-RPC only. In particular:
+
+- **`Files.SetFileDetails`** for files outside the library on Kodi 21 (used to apply watched
+  status and resume to such files). If it fails it is logged once, the fallback seek remains,
+  but the "watched" mark of those files will not show in Kodi's file lists.
+- **NFS behaviour on Android**: `xbmcvfs` rename over an existing file, `listdir` on large
+  folders, attribute caching (a new event may show up a few seconds late), `Stat.st_mtime`.
+- Whether `getTime()` is reliable in `onPlayBackPaused`, and the timing of Kodi's own resume
+  dialog compared with the pre-applied resume point.
+- Notification payloads of `VideoLibrary.OnUpdate` for episodes and music videos.
+- Settings dialog: `path` setting browsing NFS shares, the action buttons.

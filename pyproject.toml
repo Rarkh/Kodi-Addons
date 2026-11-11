@@ -8,12 +8,12 @@ select = ["E", "F", "W", "I", "B", "UP"]
 
 [tool.pyright]
 include = ["addons", "tools", "tests"]
-extraPaths = ["addons/plugin.program.artlibcleanup", "tools"]
+extraPaths = ["addons/plugin.program.artlibcleanup", "addons/service.watchsync", "tools", "tests"]
 pythonVersion = "3.8"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["addons/plugin.program.artlibcleanup", "tools"]
+pythonpath = ["addons/plugin.program.artlibcleanup", "addons/service.watchsync", "tools"]
 
 [tool.coverage.run]
 include = ["addons/**/*.py", "tools/**/*.py"]

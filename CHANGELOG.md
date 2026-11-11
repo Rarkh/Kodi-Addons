@@ -26,6 +26,12 @@ Every add-on in this repository has its own version and uses
 ### Added
 - `repository.rarkh.test` 1.0.0: repository add-on of a test channel (branch `dev`, folder
   `repo-test/`). `tools/build_repo.py --channel test` builds it; the release channel leaves it out.
+- `service.watchsync`: first working version (Phase 1). Watch status is stored as immutable
+  event files and snapshots on a NAS (via `xbmcvfs`, tmp + rename, no locking), merged by newest
+  UTC timestamp, applied to Kodi's database only when newer than what was applied before, with
+  echo suppression, capture of manual watched/unwatched marks, resume point applied in advance
+  and a fallback seek. Settings, program menu, path mappings, offline queue, local cache.
+  Not released yet: the version in `addon.xml` stays 0.1.0 until the commit that releases it.
 
 ### Changed
 - `plugin.program.artlibcleanup`: internal refactoring for SonarQube (smaller functions, shared
