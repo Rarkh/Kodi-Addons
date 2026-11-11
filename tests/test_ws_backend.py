@@ -28,8 +28,9 @@ def test_ensure_layout_creates_folders(vfs):
 
 def test_ensure_layout_fails_when_nas_is_down(vfs):
     vfs.down = True
+    backend = make_backend(vfs)
     with pytest.raises(BackendError):
-        make_backend(vfs).ensure_layout()
+        backend.ensure_layout()
 
 
 def test_root_without_trailing_slash_is_normalised(vfs):
@@ -288,12 +289,14 @@ def test_device_id_is_derived_once_and_stored():
 def test_load_config_clamps_values():
     config = load_config(FakeAddon(), "Kodi")
     assert config.storage_path == "nfs://nas/W"
-    assert config.sync_interval == 5 and config.save_interval == 20
+    assert config.sync_interval == 5
+    assert config.save_interval == 20
     assert config.threshold == 1.0
     assert config.debug
     assert config.mappings[0].raw == "R:\\"
     low = load_config(FakeAddon(watched_threshold=0, log_level=0), "Kodi")
-    assert low.threshold == 0.01 and not low.debug
+    assert low.threshold == 0.01
+    assert not low.debug
 
 
 def test_existing_target_that_cannot_be_read_counts_as_different(vfs, monkeypatch):

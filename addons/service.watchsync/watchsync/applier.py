@@ -246,6 +246,37 @@ class KodiApplier:
         self._library_at = self.mono()
         return index, by_name, complete, True
 
+    def _locate(
+        self,
+        media_id: str,
+        lists: tuple[dict[str, tuple[Kind, int]], dict[str, list[str]], bool, bool],
+    ) -> tuple[
+        tuple[Kind, int] | None,
+        tuple[dict[str, tuple[Kind, int]], dict[str, list[str]], bool, bool],
+    ]:
+        """The library item of a medium; a miss in a reused list reads the library again once
+        (new in the library?). Returns the item and the lists in use."""
+        index, by_name, _complete, fresh = lists
+        target = self._find_target(index, by_name, media_id)
+        if not target and not fresh:
+            lists = self._library_lists(refresh=True)
+            target = self._find_target(lists[0], lists[1], media_id)
+        return target, lists
+
+    def _write(
+        self, event: Event, target: tuple[Kind, int] | None, resolver: PathResolver
+    ) -> bool | None:
+        """Write an entry to Kodi: True/False for done/not possible, None if it failed (retry)."""
+        try:
+            if target:
+                self._apply_library(target[0], target[1], event)
+                return True
+            return self._apply_file(event, resolver)
+        except RpcError as exc:
+            self.log(f"Could not apply {event.media_id}: {exc}", WARNING)
+            self._library = None  # the list may be out of date (item removed)
+            return None
+
     def apply(
         self,
         events: Iterable[Event],
@@ -267,25 +298,14 @@ class KodiApplier:
         resolver = PathResolver(
             own_paths, known_ids if known_ids is not None else [e.media_id for e in known]
         )
-        index, by_name, complete, fresh = self._library_lists(refresh=False)
+        lists = self._library_lists(refresh=False)
         done = 0
         for event in pending:
-            target = self._find_target(index, by_name, event.media_id)
-            if not target and not fresh:
-                # not in the reused list: new in the library? read it again once
-                index, by_name, complete, fresh = self._library_lists(refresh=True)
-                target = self._find_target(index, by_name, event.media_id)
-            if not target and not complete:
-                continue  # try again at the next sync
-            try:
-                if target:
-                    self._apply_library(target[0], target[1], event)
-                    ok = True
-                else:
-                    ok = self._apply_file(event, resolver)
-            except RpcError as exc:
-                self.log(f"Could not apply {event.media_id}: {exc}", WARNING)
-                self._library = None  # the list may be out of date (item removed)
+            target, lists = self._locate(event.media_id, lists)
+            if not target and not lists[2]:
+                continue  # the library list is incomplete: try again at the next sync
+            ok = self._write(event, target, resolver)
+            if ok is None:
                 continue
             applied[event.media_id] = applied_entry(event, ok, "library" if target else "file")
             done += ok

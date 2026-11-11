@@ -95,7 +95,8 @@ def foreign_event(setup: Setup, **kw: Any) -> None:
 def test_disabled_service_does_nothing():
     setup = Setup(enabled=False)
     setup.service.build()
-    assert setup.service.engine is None and setup.service.player.tracker is None
+    assert setup.service.engine is None
+    assert setup.service.player.tracker is None
     setup.service.sync()  # no engine: no error
     setup.monitor.updates.append("{}")
     setup.service.step()
@@ -123,7 +124,9 @@ def test_sync_applies_nas_state_to_kodi_and_writes_status():
     setup.service.sync()
     assert [c[0] for c in setup.kodi.sets()] == ["VideoLibrary.SetMovieDetails"]
     status = json.loads(setup.rig.vfs.get("special://profile/svc/status.json"))
-    assert status["device"] == "b" and status["media"] == 1 and status["storage_path"] == NAS
+    assert status["device"] == "b"
+    assert status["media"] == 1
+    assert status["storage_path"] == NAS
     assert "Service started" not in setup.rig.vfs.get("special://profile/svc/log.txt")
     setup.kodi.calls.clear()
     setup.service.sync()
@@ -241,14 +244,16 @@ def test_step_handles_requests_and_intervals():
     clock.advance(6)
     foreign_event(setup)
     service.step()  # interval of 30 s not over, but 11 s passed: only the poll
-    assert polled == [1, 1] and engine_of(service).state == {}
+    assert polled == [1, 1]
+    assert engine_of(service).state == {}
     clock.advance(30)
     service.step()  # interval over: sync
     assert "Filme/A.mkv" in engine_of(service).state
     foreign_event(setup, media="Filme/B.mkv")
     setup.monitor.sync_now = True
     service.step()
-    assert "Filme/B.mkv" in engine_of(service).state and not setup.monitor.sync_now
+    assert "Filme/B.mkv" in engine_of(service).state
+    assert not setup.monitor.sync_now
     setup.monitor.rebuild = True
     setup.kodi.calls.clear()
     service.step()
@@ -275,7 +280,8 @@ def test_settings_change_rebuilds_the_wiring():
     setup.addon.values["sync_interval"] = 60
     setup.monitor.settings_changed = True
     service.step()
-    assert service.engine is not first and config_of(service).sync_interval == 60
+    assert service.engine is not first
+    assert config_of(service).sync_interval == 60
     assert not setup.monitor.settings_changed
 
 
@@ -302,7 +308,9 @@ def test_monitor_notifications():
     monitor.onNotification(runtime.ADDON_ID, runtime.METHOD_SYNC, "")
     monitor.onNotification(runtime.ADDON_ID, runtime.METHOD_REBUILD, "")
     monitor.onNotification(runtime.ADDON_ID, "Other.Else", "")
-    assert monitor.settings_changed and monitor.sync_now and monitor.rebuild
+    assert monitor.settings_changed
+    assert monitor.sync_now
+    assert monitor.rebuild
     assert monitor.updates == ["{}"]
 
 
@@ -320,7 +328,8 @@ def test_run_service_wires_real_objects(monkeypatch):
     runtime.run_service()
     env = captured["env"]
     assert captured["ran"]
-    assert env.now().tzinfo is not None and env.mono() >= 0
+    assert env.now().tzinfo is not None
+    assert env.mono() >= 0
     assert env.friendly_name() == xbmc.getInfoLabel("System.FriendlyName")
     assert env.make_backend("nfs://x/").root == "nfs://x/"
 
@@ -377,9 +386,14 @@ class MenuAddon(FakeAddon):
 @pytest.fixture
 def ui(monkeypatch):
     rig = Rig()
-    MenuDialog.calls, MenuDialog.selects = [], []
-    MenuDialog.inputs, MenuDialog.browses = [], []
-    MenuDialog.yesno_answer = True
+    for name, value in (
+        ("calls", []),
+        ("selects", []),
+        ("inputs", []),
+        ("browses", []),
+        ("yesno_answer", True),
+    ):
+        monkeypatch.setattr(MenuDialog, name, value)
     built: list[str] = []
     addon = MenuAddon(storage_path=NAS, device_id="b", path_mappings="")
     monkeypatch.setattr(menu, "ADDON", addon)
@@ -389,12 +403,18 @@ def ui(monkeypatch):
         menu, "VfsBackend", lambda root, folders=LAYOUT: VfsBackend(root, folders, rig.vfs)
     )
     make_local(rig.vfs, runtime.PROFILE)
-    return SimpleUi(rig, addon, built)
+    return SimpleUi(rig, addon, built, monkeypatch)
 
 
 class SimpleUi:
-    def __init__(self, rig, addon, built):
+    def __init__(self, rig, addon, built, monkeypatch):
         self.rig, self.addon, self.built = rig, addon, built
+        self.monkeypatch = monkeypatch
+
+    def script(self, **values):
+        """What the dialogs answer next (undone with the test)."""
+        for name, value in values.items():
+            self.monkeypatch.setattr(MenuDialog, name, value)
 
     @property
     def calls(self):
@@ -402,18 +422,20 @@ class SimpleUi:
 
 
 def test_menu_lists_actions_and_runs_the_chosen_one(ui):
-    MenuDialog.selects = [0]
+    ui.script(selects=[0])
     menu.run(["default.py", "1", ""])
-    assert ui.calls[0][1][0] == "S30041" and ui.built == [runtime.NOTIFY_SYNC]
+    assert ui.calls[0][1][0] == "S30041"
+    assert ui.built == [runtime.NOTIFY_SYNC]
     MenuDialog.calls.clear()
-    MenuDialog.selects = [-1]
+    ui.script(selects=[-1])
     menu.run(["default.py"])
     assert ui.built == [runtime.NOTIFY_SYNC]
 
 
 def test_script_action_runs_directly(ui):
     menu.run(["default.py", "sync"])
-    assert ui.built == [runtime.NOTIFY_SYNC] and ui.calls[-1][0] == "note"
+    assert ui.built == [runtime.NOTIFY_SYNC]
+    assert ui.calls[-1][0] == "note"
 
 
 @pytest.mark.parametrize(
@@ -444,7 +466,8 @@ def test_diagnose_reports_every_write_case(ui):
     assert kind == "text"
     assert text.startswith("S30077:" + NAS)
     assert "diag.txt (bytes): write=True exists=True size=9" in text
-    assert "devices/: exists=True" in text and "rename=True" in text
+    assert "devices/: exists=True" in text
+    assert "rename=True" in text
     assert ui.rig.vfs.files.keys().isdisjoint({NAS + "diag.txt", NAS + "diag-rename.txt"})
 
 
@@ -475,10 +498,10 @@ def test_diagnose_needs_a_storage_location(ui):
 
 
 def test_rebuild_cache_asks_first(ui):
-    MenuDialog.yesno_answer = False
+    ui.script(yesno_answer=False)
     menu.run(["x", "rebuild"])
     assert ui.built == []
-    MenuDialog.yesno_answer = True
+    ui.script(yesno_answer=True)
     menu.run(["x", "rebuild"])
     assert ui.built == [runtime.NOTIFY_REBUILD]
 
@@ -500,7 +523,8 @@ def test_status_and_log_views(ui):
     MenuDialog.calls.clear()
     menu.run(["x", "status"])
     menu.run(["x", "log"])
-    assert "S30072" in ui.calls[0][1] and ui.calls[1] == ("text", "line")
+    assert "S30072" in ui.calls[0][1]
+    assert ui.calls[1] == ("text", "line")
     local.write_text("", "status.json", json.dumps({"online": False}), True)
     MenuDialog.calls.clear()
     menu.run(["x", "status"])
@@ -525,23 +549,23 @@ def stored(ui) -> str:
 
 def test_mapping_editor_add_edit_delete(ui):
     # add by browsing, with a base
-    MenuDialog.selects = [0, 0, -1]
-    MenuDialog.browses = ["nfs://nas/Media/"]
-    MenuDialog.inputs = ["Base"]
+    ui.script(selects=[0, 0, -1])
+    ui.script(browses=["nfs://nas/Media/"])
+    ui.script(inputs=["Base"])
     menu.run(["x", "mappings"])
     assert stored(ui) == "nfs://nas/Media/=>Base"
     # add by typing, no base
-    MenuDialog.selects = [1, 1, -1]
-    MenuDialog.inputs = ["R:\\", ""]
+    ui.script(selects=[1, 1, -1])
+    ui.script(inputs=["R:\\", ""])
     menu.run(["x", "mappings"])
     assert stored(ui) == "nfs://nas/Media/=>Base|R:\\"
     # edit the first (type again, keep nothing new)
-    MenuDialog.selects = [0, 0, 1, -1]
-    MenuDialog.inputs = ["/media/nas", ""]
+    ui.script(selects=[0, 0, 1, -1])
+    ui.script(inputs=["/media/nas", ""])
     menu.run(["x", "mappings"])
     assert stored(ui) == "/media/nas/|R:\\"
     # delete the second
-    MenuDialog.selects = [1, 1, -1]
+    ui.script(selects=[1, 1, -1])
     menu.run(["x", "mappings"])
     assert stored(ui) == "/media/nas/"
 
@@ -549,17 +573,17 @@ def test_mapping_editor_add_edit_delete(ui):
 def test_mapping_editor_cancel_paths(ui):
     ui.addon.values["path_mappings"] = "R:\\"
     # cancel the add dialog; empty prefix; blank prefix; cancel the item menu; edit cancelled
-    MenuDialog.selects = [1, -1, -1]
+    ui.script(selects=[1, -1, -1])
     menu.run(["x", "mappings"])
-    MenuDialog.selects = [1, 1, -1]
-    MenuDialog.inputs = [""]
+    ui.script(selects=[1, 1, -1])
+    ui.script(inputs=[""])
     menu.run(["x", "mappings"])
-    MenuDialog.selects = [1, 1, -1]
-    MenuDialog.inputs = ["   ", ""]
+    ui.script(selects=[1, 1, -1])
+    ui.script(inputs=["   ", ""])
     menu.run(["x", "mappings"])
-    MenuDialog.selects = [0, -1, -1]
+    ui.script(selects=[0, -1, -1])
     menu.run(["x", "mappings"])
-    MenuDialog.selects = [0, 0, -1, -1]
+    ui.script(selects=[0, 0, -1, -1])
     menu.run(["x", "mappings"])
     assert stored(ui) == "R:\\"
 

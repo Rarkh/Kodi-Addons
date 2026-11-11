@@ -32,7 +32,7 @@ Every add-on in this repository has its own version and uses
   UTC timestamp, applied to Kodi's database only when newer than what was applied before, with
   echo suppression, capture of manual watched/unwatched marks, resume point applied in advance
   and a fallback seek. Settings, program menu, path mappings, offline queue, local cache.
-  Test build 0.2.23 on the branch `dev`; not released on `main` yet.
+  Test build 0.2.24 on the branch `dev`; not released on `main` yet.
   New menu/settings action "Check for updates" (Kodi refreshes its repositories at once).
   New action "Write test (diagnosis)": tries several file names and write modes in the storage
   location and shows what Kodi answers.
@@ -79,6 +79,8 @@ Every add-on in this repository has its own version and uses
   after the folder stayed shown for 3 s.
   Marking a whole folder: the item that was focused before the context menu opened is walked when
   the menu closes (3 levels, 40 folders) and the state of its files is sent.
+  SonarQube quality gate: the 82 new findings are fixed (smaller functions, one assertion per
+  statement in the tests, monkeypatch for the dialog script, no insecure scheme literals).
   Writing waits for NFS attributes to settle before it counts a read-back as failed, and the
   error says whether the write was refused or what was read back.
 

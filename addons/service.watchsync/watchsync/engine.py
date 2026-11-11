@@ -147,7 +147,7 @@ class SyncEngine:
 
     def _flush_pending(self) -> None:
         """Progress saved locally only (e.g. before a crash) becomes real events."""
-        for fields in list(self.local.pending.values()):
+        for fields in self.local.pending.values():
             event = self._enqueue(fields)
             self._apply([event])
         self.local.pending.clear()

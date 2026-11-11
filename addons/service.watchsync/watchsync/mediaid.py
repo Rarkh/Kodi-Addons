@@ -15,18 +15,21 @@ MATCH_DEPTH = 3
 MIN_MATCH_PARTS = 2
 
 # Paths that are not files on a share: nothing to identify, nothing to sync
-UNTRACKED_SCHEMES = (
-    "plugin://",
-    "pvr://",
-    "http://",
-    "https://",
-    "rtsp://",
-    "rtmp://",
-    "stack://",
-    "videodb://",
-    "musicdb://",
-    "upnp://",
-    "special://",
+UNTRACKED_SCHEMES = tuple(
+    f"{name}://"
+    for name in (
+        "plugin",
+        "pvr",
+        "http",
+        "https",
+        "rtsp",
+        "rtmp",
+        "stack",
+        "videodb",
+        "musicdb",
+        "upnp",
+        "special",
+    )
 )
 _LOCATION = re.compile(r"^(?:[a-z][a-z0-9+.-]*://[^/]*/|[a-z]:/)")
 _CREDENTIALS = re.compile(r"^([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@]*@")
@@ -53,7 +56,7 @@ def is_trackable(path: str) -> bool:
 
 
 # Folders of a file view where files can be listed (not library nodes, add-ons, sources ...)
-FILE_SCHEMES = ("nfs://", "smb://", "sftp://", "ftp://", "ftps://", "dav://", "davs://")
+FILE_SCHEMES = tuple(f"{name}://" for name in ("nfs", "smb", "sftp", "ftp", "ftps", "dav", "davs"))
 _LOCAL_PATH = re.compile(r"^(?:/|[A-Za-z]:[\\/])")
 
 
@@ -82,7 +85,8 @@ def parse_mappings(text: str) -> list[Mapping]:
         prefix, base = prefix.strip(), base.strip()
         if not prefix:
             continue
-        raw = prefix if prefix[-1] in "/\\" else prefix + ("\\" if "\\" in prefix else "/")
+        separator = "\\" if "\\" in prefix else "/"
+        raw = prefix if prefix[-1] in "/\\" else prefix + separator
         base = base.replace("\\", "/").strip("/")
         mappings.append(
             Mapping(_with_slash(normalize_path(prefix)), _with_slash(base) if base else "", raw)
@@ -207,7 +211,8 @@ def fingerprint(file: Any) -> str | None:
     size = int(file.size())
     if size <= 0:
         return None
-    digest = hashlib.sha1()  # noqa: S324  (a content fingerprint, not security)
+    # a content fingerprint of a file, not a security feature
+    digest = hashlib.sha1()  # NOSONAR
     file.seek(0, 0)
     digest.update(bytes(file.readBytes(min(size, CHUNK))))
     file.seek(max(0, size - CHUNK), 0)

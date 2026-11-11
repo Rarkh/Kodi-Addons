@@ -59,13 +59,15 @@ def test_record_is_uploaded_as_numbered_event_file(rig):
     a = rig.device("a")
     a.sync()
     event = record(a)
-    assert event is not None and event.seq == 1
+    assert event is not None
+    assert event.seq == 1
     assert rig.vfs.get(NAS + "events/a_000001.json") == encode_event(event)
     assert a.local.queue == []
     info = json.loads(rig.vfs.get(NAS + "devices/a.json"))
     assert info["last_seq"] == 1
     second = record(a, kind="watched", position_s=0.0, playcount=1, force=True)
-    assert second is not None and second.seq == 2
+    assert second is not None
+    assert second.seq == 2
 
 
 def test_other_device_receives_the_state(rig):
@@ -117,7 +119,8 @@ def test_offline_events_are_queued_and_sent_in_order(rig):
     assert len(a.local.queue) == 2
     rig.vfs.down = False
     a.sync()
-    assert a.local.queue == [] and a.online
+    assert a.local.queue == []
+    assert a.online
     b.sync()
     assert b.lookup("Filme/B.mkv", None).position_s == 2.0
 
@@ -127,7 +130,8 @@ def test_upload_failure_keeps_event_in_queue(rig):
     a.sync()
     rig.vfs.fail_rename = True
     record(a)
-    assert len(a.local.queue) == 1 and not a.online
+    assert len(a.local.queue) == 1
+    assert not a.online
     assert any("Upload failed" in w for w in rig.warnings())
     rig.vfs.fail_rename = False
     a.sync()
@@ -192,7 +196,8 @@ def test_local_only_progress_is_sent_after_a_restart(rig):
     restarted.sync()
     assert restarted.local.pending == {}
     event = event_from_nas(rig, "a_000002.json")
-    assert event.position_s == 222.0 and event.ts.endswith(":05.000Z")
+    assert event.position_s == 222.0
+    assert event.ts.endswith(":05.000Z")
 
 
 def event_from_nas(rig: Rig, name: str) -> Event:
@@ -249,7 +254,8 @@ def test_event_with_newer_format_version_is_skipped(rig):
     data["v"] = 2
     rig.vfs.put(NAS + "events/x_000001.json", json.dumps(data))
     b.sync()
-    assert b.state == {} and b.local.processed["x"] == 1
+    assert b.state == {}
+    assert b.local.processed["x"] == 1
     assert any("skipped" in w for w in rig.warnings())
 
 
@@ -385,7 +391,8 @@ def test_clock_check_warns_when_nas_time_is_far_off(rig):
     rig.vfs.default_mtime = rig.clock.now_value.timestamp() + 3600
     a = rig.device("a")
     a.sync()
-    assert a.clock_offset is not None and a.clock_offset > 3000
+    assert a.clock_offset is not None
+    assert a.clock_offset > 3000
     assert any("Clock differs" in w for w in rig.warnings())
 
 
@@ -418,7 +425,8 @@ def test_rebuild_reads_everything_again_but_keeps_the_queue(rig):
     changed = b.rebuild()
     assert b.local.applied.get("x") is None
     assert {e.media_id for e in changed} >= {"Filme/A.mkv"}
-    assert b.local.queue == [] and "Filme/B.mkv" in b.state
+    assert b.local.queue == []
+    assert "Filme/B.mkv" in b.state
 
 
 def test_flush_sends_everything_before_shutdown(rig):
@@ -440,8 +448,12 @@ def test_status_summary(rig):
     a.sync()
     record(a, media="/full/path.mkv", unmapped=True)
     status = a.status()
-    assert status["device"] == "a" and status["media"] == 1 and status["unmapped"] == 1
-    assert status["online"] and status["queued"] == 0 and status["defective"] == []
+    assert status["device"] == "a"
+    assert status["media"] == 1
+    assert status["unmapped"] == 1
+    assert status["online"]
+    assert status["queued"] == 0
+    assert status["defective"] == []
     assert status["last_sync"].endswith("Z")
 
 
@@ -474,7 +486,8 @@ def test_own_paths_are_remembered_once_and_capped(rig):
     assert a.local.own_paths == ["nfs://x/a.mkv"]
     for number in range(305):
         a.remember_path(f"nfs://x/{number}.mkv")
-    assert len(a.local.own_paths) == 300 and a.local.own_paths[-1] == "nfs://x/304.mkv"
+    assert len(a.local.own_paths) == 300
+    assert a.local.own_paths[-1] == "nfs://x/304.mkv"
 
 
 # ---- a big state: incremental merge, indexes, applying only what changed, cache writes -------
@@ -529,7 +542,8 @@ def test_an_entry_without_fingerprint_is_replaced_in_the_indexes(rig):
     assert a.lookup("x", "s=2;h=2;").position_s == 2.0
     rig.clock.advance(1)
     record(a, media="Show/S01/E01.mkv", position_s=3.0, fp="s=3;h=3;")
-    assert a.lookup("x", "s=2;h=2;") is None and a.lookup("x", "s=3;h=3;").position_s == 3.0
+    assert a.lookup("x", "s=2;h=2;") is None
+    assert a.lookup("x", "s=3;h=3;").position_s == 3.0
 
 
 def test_only_changed_entries_wait_for_kodi_and_applied_ones_are_forgotten(rig):
@@ -545,7 +559,8 @@ def test_only_changed_entries_wait_for_kodi_and_applied_ones_are_forgotten(rig):
     assert b.unapplied == {"Show/S01/E01.mkv"}
     b.local.applied["Show/S01/E01.mkv"] = {"ts": waiting[0].ts, "ok": True}
     b.applied_done(waiting)
-    assert b.unapplied == set() and b.unapplied_events() == []
+    assert b.unapplied == set()
+    assert b.unapplied_events() == []
     b.sync()  # nothing new: nothing waits
     assert b.unapplied_events() == []
     b.unapplied.add("gone")  # an id that is not in the state any more is ignored
@@ -564,7 +579,8 @@ def test_a_rebuild_forgets_what_waited_and_reads_everything_again(rig):
     a = rig.device("a")
     record(a)
     a.rebuild()
-    assert set(a.state) == {"Filme/A.mkv"} and a.unapplied == {"Filme/A.mkv"}
+    assert set(a.state) == {"Filme/A.mkv"}
+    assert a.unapplied == {"Filme/A.mkv"}
     assert a.lookup("Filme/A.mkv", None) is not None
 
 
@@ -623,4 +639,5 @@ def test_unreadable_cache_files_start_empty_and_a_broken_queue_entry_is_kept(rig
     a.local.queue.append({"v": 1, "junk": True})
     a.save(force=True)
     again = rig.device("a")
-    assert again.local.queue == [{"v": 1, "junk": True}] and again.state == {}
+    assert again.local.queue == [{"v": 1, "junk": True}]
+    assert again.state == {}

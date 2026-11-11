@@ -160,7 +160,7 @@ def fetch_textures(call: Call, progress: Progress) -> list[dict[str, Any]]:
     Textures.GetTextures does not accept `limits` on all Kodi versions, so it is not paged.
     The `sizes` property is not used: its `size` is a size class, not a file size in bytes.
     """
-    progress("Textures.GetTextures", 0.0)
-    result = call("Textures.GetTextures", {"properties": ["url", "cachedurl"]})
-    progress("Textures.GetTextures", 1.0)
+    progress(TEXTURES_METHOD, 0.0)
+    result = call(TEXTURES_METHOD, {"properties": ["url", "cachedurl"]})
+    progress(TEXTURES_METHOD, 1.0)
     return result.get("textures") or []

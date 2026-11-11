@@ -135,7 +135,8 @@ def test_fingerprinter_caches_and_survives_errors():
 
     printer = mediaid.Fingerprinter(opener, max_entries=2)
     first = printer.get("a")
-    assert printer.get("a") == first and opened == ["a"]
+    assert printer.get("a") == first
+    assert opened == ["a"]
     assert sources["a"].closed
     assert printer.get("missing") is None
     assert printer.get("bad") is None  # size() missing: no fingerprint
@@ -219,8 +220,9 @@ def test_invalid_events_are_rejected(data):
 
 
 def test_newer_format_version_is_reported_separately():
+    data = _bad(v=2)
     with pytest.raises(UnsupportedVersion):
-        event_from_dict(_bad(v=2))
+        event_from_dict(data)
 
 
 def test_decode_rejects_broken_json():
@@ -277,8 +279,9 @@ def replace_seq(event: Event, seq: int) -> Event:
     ],
 )
 def test_invalid_snapshots(data):
+    text = json.dumps(data)
     with pytest.raises(EventError):
-        decode_snapshot(json.dumps(data))
+        decode_snapshot(text)
 
 
 def test_snapshot_with_newer_version():
@@ -324,7 +327,8 @@ def test_different_media_stay_separate_and_unmapped_flag_is_per_id():
     two = _event(media="two", fp="s=2;h=y;", unmapped=True)
     third = _event(media="three", fp="s=1;h=x;")
     result = merge([one, two, third])
-    assert result["two"].unmapped and not result["one"].unmapped
+    assert result["two"].unmapped
+    assert not result["one"].unmapped
     assert set(result) == {"one", "two", "three"}
     assert merge([]) == {}
 
