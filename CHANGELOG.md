@@ -32,7 +32,8 @@ Every add-on in this repository has its own version and uses
   UTC timestamp, applied to Kodi's database only when newer than what was applied before, with
   echo suppression, capture of manual watched/unwatched marks, resume point applied in advance
   and a fallback seek. Settings, program menu, path mappings, offline queue, local cache.
-  Test build 0.2.1 on the branch `dev`; not released on `main` yet.
+  Test build 0.2.2 on the branch `dev`; not released on `main` yet.
+  New menu/settings action "Check for updates" (Kodi refreshes its repositories at once).
   Writing waits for NFS attributes to settle before it counts a read-back as failed, and the
   error says whether the write was refused or what was read back.
 

@@ -18,6 +18,7 @@ from .runtime import NOTIFY_REBUILD, NOTIFY_SYNC, PROFILE, STATUS_FILE
 ADDON = xbmcaddon.Addon()
 HEADING = ADDON.getAddonInfo("name")
 FOLDER_DIALOG = 0
+REFRESH_REPOS = "UpdateAddonRepos"
 
 
 def tr(string_id: int, *args: Any) -> str:
@@ -38,6 +39,12 @@ def rebuild_cache() -> None:
     if xbmcgui.Dialog().yesno(HEADING, tr(30052)):
         xbmc.executebuiltin(NOTIFY_REBUILD)
         xbmcgui.Dialog().notification(HEADING, tr(30051))
+
+
+def check_updates() -> None:
+    """Make Kodi look at its repositories now; an available update is then offered or installed."""
+    xbmc.executebuiltin(REFRESH_REPOS)
+    xbmcgui.Dialog().ok(HEADING, tr(30076, ADDON.getAddonInfo("version")))
 
 
 def show_status() -> None:
@@ -140,6 +147,7 @@ ACTIONS = {
     "log": (30044, show_log),
     "rebuild": (30045, rebuild_cache),
     "test": (30046, test_connection),
+    "update": (30047, check_updates),
 }
 
 

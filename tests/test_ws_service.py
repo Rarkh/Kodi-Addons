@@ -288,8 +288,11 @@ class MenuDialog:
 
 
 class MenuAddon(FakeAddon):
+    def getAddonInfo(self, key):  # noqa: N802
+        return "9.9.9"
+
     def getLocalizedString(self, string_id):  # noqa: N802
-        return f"S{string_id}:{{0}}" if string_id in (30054, 30070) else f"S{string_id}"
+        return f"S{string_id}:{{0}}" if string_id in (30054, 30070, 30076) else f"S{string_id}"
 
 
 @pytest.fixture
@@ -332,6 +335,12 @@ def test_menu_lists_actions_and_runs_the_chosen_one(ui):
 def test_script_action_runs_directly(ui):
     menu.run(["default.py", "sync"])
     assert ui.built == [runtime.NOTIFY_SYNC] and ui.calls[-1][0] == "note"
+
+
+def test_check_updates_refreshes_the_repositories(ui):
+    menu.run(["x", "update"])
+    assert ui.built == [menu.REFRESH_REPOS]
+    assert ui.calls[-1] == ("ok", "S30076:9.9.9")
 
 
 def test_rebuild_cache_asks_first(ui):

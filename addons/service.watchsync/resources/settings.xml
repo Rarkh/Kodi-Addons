@@ -140,6 +140,11 @@
                     <data>RunScript(service.watchsync,rebuild)</data>
                     <control type="button" format="action"/>
                 </setting>
+                <setting id="check_updates" type="action" label="30047">
+                    <level>0</level>
+                    <data>RunScript(service.watchsync,update)</data>
+                    <control type="button" format="action"/>
+                </setting>
             </group>
         </category>
     </section>

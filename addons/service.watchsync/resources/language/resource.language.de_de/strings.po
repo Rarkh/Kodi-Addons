@@ -107,6 +107,10 @@ msgctxt "#30046"
 msgid "NAS-Verbindung testen"
 msgstr "NAS-Verbindung testen"
 
+msgctxt "#30047"
+msgid "Nach Updates suchen"
+msgstr "Nach Updates suchen"
+
 msgctxt "#30050"
 msgid "Synchronisation angefordert"
 msgstr "Synchronisation angefordert"
@@ -182,3 +186,7 @@ msgstr "online"
 msgctxt "#30075"
 msgid "offline"
 msgstr "offline"
+
+msgctxt "#30076"
+msgid "Kodi prüft jetzt seine Repositories (installiert: {0}). Gibt es eine neuere Version, installiert Kodi sie selbst, wenn für dieses Add-on automatische Updates eingeschaltet sind; sonst öffne die Add-on-Information und wähle Aktualisieren."
+msgstr "Kodi prüft jetzt seine Repositories (installiert: {0}). Gibt es eine neuere Version, installiert Kodi sie selbst, wenn für dieses Add-on automatische Updates eingeschaltet sind; sonst öffne die Add-on-Information und wähle Aktualisieren."
