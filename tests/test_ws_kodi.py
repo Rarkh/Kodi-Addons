@@ -9,6 +9,8 @@ import pytest
 from test_ws_engine import Rig, record
 from watchsync.applier import (
     ECHO_WINDOW_S,
+    MAX_KNOWN_FILES,
+    FilePoller,
     KodiApplier,
     ManualChanges,
     RpcError,
@@ -90,6 +92,7 @@ class FakeKodi:
         self.musicvideos: list[dict] = []
         self.fail: set[str] = set()
         self.details = {"VideoLibrary.GetMovieDetails": {"moviedetails": {"file": MOVIE_PATH}}}
+        self.file_playcounts: dict[str, Any] = {}  # path -> playcount shown by Files.GetFileDetails
 
     def __call__(self, method: str, params: dict) -> dict:
         self.calls.append((method, params))
@@ -101,10 +104,14 @@ class FakeKodi:
             return {"episodes": self.episodes}
         if method == "VideoLibrary.GetMusicVideos":
             return {"musicvideos": self.musicvideos}
+        if method == "Files.GetFileDetails":
+            if params["file"] not in self.file_playcounts:
+                raise RpcError("unknown file")
+            return {"filedetails": {"playcount": self.file_playcounts[params["file"]]}}
         return self.details.get(method, {})
 
     def sets(self) -> list[tuple[str, dict]]:
-        return [c for c in self.calls if ".Set" in c[0] or c[0].startswith("Files.")]
+        return [c for c in self.calls if ".Set" in c[0]]
 
 
 MOVIE_PATH = "nfs://nas/Media/Filme/A.mkv"
@@ -366,6 +373,76 @@ def test_ignored_notifications_are_logged_for_debugging(kodi, clock):
     assert not manual.handle(json.dumps({"item": {"type": "unknown"}, "playcount": 1}))
     assert not manual.handle(json.dumps({"item": "x", "playcount": 1}))
     assert sum("Ignored notification" in m for m in logs) == 2
+
+
+# ---- files outside the library: noticing manual marks by looking at the playcount ----------
+
+FILE = "nfs://nas/Media/Show/S01/E01.mkv"
+
+
+def poller_with(kodi, clock, own_paths=(FILE,), known=None):
+    applier, _ = make_applier(kodi, clock)
+    engine = FakeEngine(known)
+    manual = ManualChanges(kodi, MAPS, engine, applier, lambda *a, **k: None)
+    return FilePoller(kodi, MAPS, manual, applier), engine, applier, list(own_paths)
+
+
+def test_a_change_of_the_playcount_since_the_last_look_becomes_an_event(kodi, clock):
+    poller, engine, _, own = poller_with(kodi, clock)
+    kodi.file_playcounts[FILE] = 0
+    assert poller.poll(own) == 0 and engine.recorded == []  # the first look is only a baseline
+    assert poller.poll(own) == 0
+    kodi.file_playcounts[FILE] = 1  # marked as watched in the file list
+    assert poller.poll(own) == 1
+    kodi.file_playcounts[FILE] = 0  # and unmarked again
+    assert poller.poll(own) == 1
+    assert [(a[0], a[1], a[4]) for a, _ in engine.recorded] == [
+        ("Show/S01/E01.mkv", "watched", 1),
+        ("Show/S01/E01.mkv", "unwatched", 0),
+    ]
+
+
+def test_what_the_add_on_wrote_itself_is_no_manual_change(kodi, clock):
+    poller, engine, applier, _ = poller_with(kodi, clock, own_paths=())
+    applier.apply([ev(media="Other/B.mkv", kind="watched", playcount=1)], {})
+    written = "nfs://nas/Media/Other/B.mkv"
+    assert applier.file_playcounts[written] == 1
+    kodi.file_playcounts[written] = 1  # Kodi shows what we wrote
+    assert poller.poll([]) == 0 and engine.recorded == []
+
+
+def test_a_change_that_matches_the_nas_state_creates_no_event(kodi, clock):
+    known = ev(media="Show/S01/E01.mkv", kind="watched", playcount=1)
+    poller, engine, _, own = poller_with(kodi, clock, known=known)
+    kodi.file_playcounts[FILE] = 0
+    poller.poll(own)
+    kodi.file_playcounts[FILE] = 1
+    assert poller.poll(own) == 0 and engine.recorded == []
+
+
+def test_unknown_or_odd_answers_are_skipped(kodi, clock):
+    poller, engine, _, own = poller_with(kodi, clock)
+    assert poller.poll(own) == 0  # Files.GetFileDetails fails for the file
+    kodi.file_playcounts[FILE] = True
+    assert poller.poll(own) == 0
+    kodi.file_playcounts[FILE] = None
+    assert poller.poll(own) == 0 and engine.recorded == []
+
+
+def test_a_reset_gives_no_playcount_baseline(kodi, clock):
+    applier, _ = make_applier(kodi, clock)
+    applier._remember_file("nfs://x/a.mkv", ev(media="x/a.mkv", kind="reset"))
+    assert "nfs://x/a.mkv" in applier.file_media and applier.file_playcounts == {}
+
+
+def test_the_applier_remembers_only_the_newest_files(kodi, clock):
+    applier, _ = make_applier(kodi, clock)
+    for number in range(MAX_KNOWN_FILES + 5):
+        applier._remember_file(f"nfs://x/{number}.mkv", ev(media=f"x/{number}.mkv"))
+    applier._remember_file("nfs://x/304.mkv", ev(media="x/304.mkv"))  # same file again
+    assert len(applier.file_media) == MAX_KNOWN_FILES
+    assert next(reversed(applier.file_media)) == "nfs://x/304.mkv"
+    assert "nfs://x/0.mkv" not in applier.file_media
 
 
 def test_same_playcount_as_the_state_creates_no_event(kodi, clock):

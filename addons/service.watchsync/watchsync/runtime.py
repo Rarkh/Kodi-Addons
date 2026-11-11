@@ -12,7 +12,7 @@ import xbmc
 import xbmcaddon
 import xbmcvfs
 
-from .applier import KodiApplier, ManualChanges, Rpc, make_rpc
+from .applier import FilePoller, KodiApplier, ManualChanges, Rpc, make_rpc
 from .backend import Backend, BackendError, VfsBackend
 from .config import Config, load_config
 from .engine import SyncEngine
@@ -81,6 +81,7 @@ class Service:
         self.engine: SyncEngine | None = None
         self.applier: KodiApplier | None = None
         self.manual: ManualChanges | None = None
+        self.poller: FilePoller | None = None
         self.next_sync = 0.0
         self.next_save = 0.0
 
@@ -88,7 +89,7 @@ class Service:
         env = self.env
         config = self.config = load_config(env.addon, env.friendly_name())
         self.log.debug = config.debug
-        self.engine = self.applier = self.manual = self.player.tracker = None
+        self.engine = self.applier = self.manual = self.poller = self.player.tracker = None
         if not config.enabled:
             self.log("Synchronisation is switched off in the settings")
             return
@@ -106,6 +107,7 @@ class Service:
         self.engine = engine
         self.applier = KodiApplier(env.rpc, config.mappings, env.mono, self.log)
         self.manual = ManualChanges(env.rpc, config.mappings, engine, self.applier, self.log)
+        self.poller = FilePoller(env.rpc, config.mappings, self.manual, self.applier)
         self.player.tracker = Tracker(
             engine,
             config.mappings,
@@ -130,6 +132,8 @@ class Service:
         self.applier.apply(
             engine.state.values(), engine.local.applied, playing, engine.local.own_paths
         )
+        if self.poller and not playing:
+            self.poller.poll(engine.local.own_paths)
         engine.save()
         self._write_status(engine, config)
         self.log.flush()

@@ -24,6 +24,8 @@ from .mediaid import (
 Rpc = Callable[[str, Dict[str, Any]], Dict[str, Any]]
 Applied = Dict[str, Dict[str, Any]]
 
+MAX_POLLED = 100
+MAX_KNOWN_FILES = 300
 ECHO_WINDOW_S = 5.0
 
 
@@ -133,6 +135,9 @@ class KodiApplier:
         self.mono = mono
         self.log = log
         self.file_details_failed = False
+        # files outside the library this add-on wrote to: path -> media id, path -> playcount
+        self.file_media: dict[str, str] = {}
+        self.file_playcounts: dict[str, int] = {}
         # (item type, database id) -> (playcount we set, time) for echo suppression
         self.echo: dict[tuple[str, int], tuple[int, float]] = {}
 
@@ -200,7 +205,18 @@ class KodiApplier:
                 self.log(f"Files.SetFileDetails failed for {path}: {exc}", WARNING)
             return False
         self.log(f"Files.SetFileDetails wrote {event.type} {event.position_s:.0f} s: {path}", INFO)
+        self._remember_file(path, event)
         return True
+
+    def _remember_file(self, path: str, event: Event) -> None:
+        """What was written is the baseline for noticing a later manual change of the file."""
+        self.file_media.pop(path, None)
+        self.file_media[path] = event.media_id
+        while len(self.file_media) > MAX_KNOWN_FILES:
+            self.file_media.pop(next(iter(self.file_media)))
+        values = details(event)
+        if "playcount" in values:
+            self.file_playcounts[path] = values["playcount"]
 
     def apply(
         self,
@@ -297,6 +313,10 @@ class ManualChanges:
         if not is_trackable(path):
             self.log(f"Ignored notification without a usable file: {data[:300]}", DEBUG)
             return False
+        return self.record_path(path, playcount)
+
+    def record_path(self, path: str, playcount: int) -> bool:
+        """Create the watched/unwatched event for a file whose playcount was changed by hand."""
         ref = to_media_id(path, self.mappings)
         known = self.engine.lookup(ref.id, None)
         if known and known.playcount == playcount:
@@ -312,3 +332,48 @@ class ManualChanges:
         )
         self.log(f"Manual change in Kodi: {ref.id} playcount {playcount}", INFO)
         return True
+
+
+class FilePoller:
+    """Notices "marked as watched/unwatched" on files outside the library.
+
+    Kodi does not have to announce such a change, so the playcount of the files this device
+    knows is read from time to time. A change since the last look is a manual change (what this
+    add-on wrote itself is the baseline, so its own writes are no change)."""
+
+    def __init__(
+        self,
+        rpc: Rpc,
+        mappings: list[Mapping],
+        manual: ManualChanges,
+        applier: KodiApplier,
+    ) -> None:
+        self.rpc = rpc
+        self.mappings = mappings
+        self.manual = manual
+        self.applier = applier
+
+    def _playcount(self, path: str) -> int | None:
+        params = {"file": path, "media": "video", "properties": ["playcount"]}
+        try:
+            count = self.rpc("Files.GetFileDetails", params).get("filedetails", {}).get("playcount")
+        except RpcError:
+            return None
+        return count if isinstance(count, int) and not isinstance(count, bool) else None
+
+    def poll(self, own_paths: Iterable[str]) -> int:
+        """Look at the newest known files; returns how many manual changes became events."""
+        paths = {
+            path: to_media_id(path, self.mappings).id for path in list(own_paths)[-MAX_POLLED:]
+        }
+        paths.update(list(self.applier.file_media.items())[-MAX_POLLED:])
+        changes = 0
+        for path in paths:
+            count = self._playcount(path)
+            if count is None:
+                continue
+            last = self.applier.file_playcounts.get(path)
+            self.applier.file_playcounts[path] = count
+            if last is not None and last != count and self.manual.record_path(path, count):
+                changes += 1
+        return changes
