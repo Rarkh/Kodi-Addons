@@ -31,7 +31,7 @@ Every add-on in this repository has its own version and uses
   UTC timestamp, applied to Kodi's database only when newer than what was applied before, with
   echo suppression, capture of manual watched/unwatched marks, resume point applied in advance
   and a fallback seek. Settings, program menu, path mappings, offline queue, local cache.
-  Not released yet: the version in `addon.xml` stays 0.1.0 until the commit that releases it.
+  Test build 0.2.0 on the branch `dev`; not released on `main` yet.
 
 ### Changed
 - `plugin.program.artlibcleanup`: internal refactoring for SonarQube (smaller functions, shared
