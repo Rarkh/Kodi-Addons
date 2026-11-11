@@ -27,7 +27,7 @@ pip install -r requirements-dev.txt
 
 1. Create `addons/<addon-id>/` with an `addon.xml`. The id must equal the folder name
    (`plugin.program.xyz`, `service.xyz`, `script.xyz` ...).
-2. Optionally put an `icon.png` (e.g. 512x512) and `fanart.jpg` (1920x1080) next to it.
+2. Optionally put an `icon.png` (e.g. 512x512) next to it.
 3. Build (see below). The add-on then appears in the repository.
 
 ## Raise a version
@@ -44,7 +44,7 @@ In VS Code press **Ctrl+Shift+B** (task "Build Repo") or run:
 python tools/build_repo.py
 ```
 
-For every add-on this creates `repo/zips/<id>/<id>-<version>.zip`, copies icon and fanart,
+For every add-on this creates `repo/zips/<id>/<id>-<version>.zip`, copies the icon,
 writes `repo/addons.xml` and `repo/addons.xml.md5` and prints a summary. Old ZIP versions stay
 in place (rollback possible); ZIPs of the current version are rebuilt.
 
@@ -88,7 +88,7 @@ device; keep an add-on that is under test out of `repository.rarkh` until it is 
 
 Everything in the test channel is marked as a test: the build adds `-rcN` to the version
 (`0.3.4-rc1`, `0.3.4-rc2`, ... counting up, because Kodi only updates to a higher version), the
-name gets "(Test)" and the icon a red TEST band (made with Pillow; an add-on without an icon gets one
+name gets "(Test)" and the icon a red diagonal TEST stamp (made with Pillow; an add-on without an icon gets one
 made from its name). `addons/` stays clean: `addon.xml` holds the number of the next release.
 Kodi ranks `0.3.4-rc2` above `0.3.4`, so a device on a test build is offered the release only
 with the next number (`0.3.5`) or after a reinstall.

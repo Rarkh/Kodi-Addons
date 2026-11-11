@@ -8,14 +8,15 @@ Usage:
 
 Result (per channel folder):
     zips/<id>/<id>-<version>.zip   (folder <id>/ as the ZIP root)
-    zips/<id>/icon.png, fanart.jpg (if present)
+    zips/<id>/icon.png (if present)
     addons.xml
     addons.xml.md5
 
 Packages of the test channel are marked as such: the version gets the suffix -rcN (Kodi only
 updates to a higher version, so every build counts up: 0.3.4-rc1, 0.3.4-rc2, ...), the name gets
-"(Test)" and the icon a red "TEST" band (needs Pillow; an add-on without an icon gets one made from
-its name). The sources in addons/ stay clean: addon.xml holds the number of the next release.
+"(Test)" and the icon a red diagonal "TEST" stamp (needs Pillow; an add-on without an icon gets
+one made from its name). The sources in addons/ stay clean: addon.xml holds the number of the
+next release.
 
 The release channel leaves out the test repository add-on. The test channel contains only the
 test repository add-on plus the add-ons named with --only, so no add-on id is offered by both
@@ -47,7 +48,7 @@ TEST_ONLY = {"repository.rarkh.test"}
 
 EXCLUDE_DIRS = {"__pycache__", ".git", ".vscode", ".pytest_cache", ".ruff_cache"}
 EXCLUDE_SUFFIXES = {".pyc", ".pyo"}
-ASSET_FILES = ("icon.png", "fanart.jpg")
+ASSET_FILES = ("icon.png",)
 TEST_NAME_SUFFIX = " (Test)"
 ICON_SIZE = 512
 # Fixed timestamp in the ZIP: same content gives the same ZIP (no Git noise on rebuild)
@@ -134,7 +135,7 @@ def retag(text: str, version: str, name: str) -> str:
 
 
 def test_icon(addon_dir: Path, name: str) -> bytes:
-    """The add-on's icon (or one made from its name) with a red TEST band; PNG bytes."""
+    """The add-on's icon (or one made from its name) with a red diagonal TEST stamp; PNG bytes."""
     from PIL import Image, ImageDraw, ImageFont  # only the test channel needs Pillow
 
     source = addon_dir / "icon.png"
@@ -143,22 +144,26 @@ def test_icon(addon_dir: Path, name: str) -> bytes:
     else:
         image = Image.new("RGBA", (ICON_SIZE, ICON_SIZE), (32, 52, 84, 255))
         ImageDraw.Draw(image).text(
-            (ICON_SIZE // 2, ICON_SIZE // 3),
+            (ICON_SIZE // 2, ICON_SIZE // 6),
             name[: -len(TEST_NAME_SUFFIX)] if name.endswith(TEST_NAME_SUFFIX) else name,
             fill=(255, 255, 255, 255),
             font=ImageFont.load_default(ICON_SIZE // 9),
             anchor="mm",
         )
-    draw = ImageDraw.Draw(image)
-    top = ICON_SIZE * 2 // 3
-    draw.rectangle((0, top, ICON_SIZE, top + ICON_SIZE // 4), fill=(200, 30, 30, 255))
+    size = ICON_SIZE
+    layer = Image.new("RGBA", (size * 2, size * 2), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer)
+    draw.rectangle((0, size - size // 8, size * 2, size + size // 8), fill=(200, 30, 30, 255))
     draw.text(
-        (ICON_SIZE // 2, top + ICON_SIZE // 8),
+        (size, size),
         "TEST",
         fill=(255, 255, 255, 255),
-        font=ImageFont.load_default(ICON_SIZE // 6),
+        font=ImageFont.load_default(size // 5),
         anchor="mm",
     )
+    # the stamp runs diagonally across the icon (bottom left to top right)
+    stamp = layer.rotate(30, resample=Image.Resampling.BICUBIC)
+    image.alpha_composite(stamp.crop((size // 2, size // 2, size // 2 + size, size // 2 + size)))
     out = io.BytesIO()
     image.save(out, "PNG")
     return out.getvalue()

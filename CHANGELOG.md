@@ -36,9 +36,12 @@ Every add-on in this repository has its own version and uses
   separate entries; only the library one was written, so the share showed no resume point.
 
 ### Changed
+- `repository.rarkh` 1.0.3 (not released yet), `repository.rarkh.test`: new icon (Rarkh Repo logo).
+- `plugin.program.artlibcleanup` 0.1.5 and `service.watchsync` 0.3.4 (not released yet): new icons.
+- Fanart images removed from all add-ons (files, `<fanart>` entries, build and README).
 - Test channel (`tools/build_repo.py --channel test`): every package is marked as a test. The version
   gets `-rcN` (counting up per build of the same number, e.g. `0.3.4-rc1`), the name `(Test)`, the
-  icon a red TEST band (Pillow; an add-on without an icon gets one made from its name). The sources in
+  icon a red diagonal TEST stamp (Pillow; an add-on without an icon gets one made from its name). The sources in
   `addons/` stay unchanged.
 
 ### Added

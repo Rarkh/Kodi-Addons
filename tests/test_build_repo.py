@@ -107,11 +107,11 @@ def test_build_zip_has_addon_folder_as_root(repo: Path):
 def test_build_zip_copies_assets(repo: Path):
     folder = write_addon(repo / "addons", "plugin.x")
     (folder / "icon.png").write_bytes(b"png")
-    (folder / "fanart.jpg").write_bytes(b"jpg")
+    (folder / "fanart.jpg").write_bytes(b"jpg")  # no longer published next to the ZIP
     br.build_zip(folder, "plugin.x", "1.0.0")
     out = repo / "repo" / "zips" / "plugin.x"
     assert (out / "icon.png").read_bytes() == b"png"
-    assert (out / "fanart.jpg").read_bytes() == b"jpg"
+    assert not (out / "fanart.jpg").exists()
 
 
 def test_render_addons_xml_is_valid_xml():
@@ -262,7 +262,7 @@ def test_the_test_channel_marks_version_name_and_icon(repo: Path):
     assert 'version="1.0.0-rc1"' in inside
     assert 'name="X (Test)"' in inside
     marked = Image.open(io.BytesIO(icon)).convert("RGB")
-    assert marked.getpixel((256, 400)) == (200, 30, 30)  # the red band
+    assert marked.getpixel((429, 156)) == (200, 30, 30)  # on the diagonal stamp
     assert marked.getpixel((5, 5)) == (0, 128, 0)  # the add-on's own icon
     assert (out / "zips" / "plugin.b" / "icon.png").read_bytes() == icon
     assert (plain / "icon.png").read_bytes() != icon  # the source stays clean
@@ -277,9 +277,9 @@ def test_an_addon_without_icon_gets_one_made_from_its_name(tmp_path: Path):
     icon = Image.open(io.BytesIO(br.test_icon(folder, "Name (Test)"))).convert("RGB")
     assert icon.size == (br.ICON_SIZE, br.ICON_SIZE)
     assert icon.getpixel((5, 5)) == (32, 52, 84)
-    assert icon.getpixel((256, 400)) == (200, 30, 30)
+    assert icon.getpixel((429, 156)) == (200, 30, 30)
     plain = Image.open(io.BytesIO(br.test_icon(folder, "Name"))).convert("RGB")
-    assert plain.getpixel((256, 400)) == (200, 30, 30)
+    assert plain.getpixel((429, 156)) == (200, 30, 30)
 
 
 def test_previous_versions_reads_an_existing_index(tmp_path: Path):
