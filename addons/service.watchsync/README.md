@@ -122,13 +122,15 @@ The NAS is the truth; Kodi's database is only the display on this device.
 7. **Other sync add-ons (e.g. Trakt)** change the same fields. Disable them on devices that run
    WatchSync.
 
-**Marking by hand on files outside the library:** Kodi does not have to announce it, so the folder
-shown in the file view is asked for its files and their playcounts (one request, also for files
-this add-on never saw); a change since the last look becomes a `watched`/`unwatched` event. The
-first look at a folder is only the baseline, so marks that existed before are not sent by this.
-Many single requests next to Kodi listing a share once froze Kodi (navigating up a folder), so
-nothing happens while the shown folder changes: only a folder that was still shown at the previous
-sync (30 s) is asked.
+**Marking by hand on files outside the library:** the trigger is the marking itself. When Kodi
+announces a change (`VideoLibrary.OnUpdate`) or a context menu has just closed (it may have set a
+mark), the folder shown in the file view is asked for its files and their playcounts (one request,
+also for files this add-on never saw) and compared with the baseline; a change becomes a
+`watched`/`unwatched` event within a second. The baseline is one look that is taken when a folder
+has stayed shown for 3 seconds; marks that existed before are not sent by this. A mark set by a key
+without a context menu is found by the look at every sync (30 s). Many requests next to Kodi
+listing a share once froze Kodi (navigating up a folder), so nothing is asked while the shown
+folder changes or while a video plays.
 
 **Flags for files outside the library** (watched mark, "in progress" mark in file lists): Kodi keeps
 them per path, so the add-on needs the path *this* device uses. It learns it from the files this

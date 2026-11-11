@@ -11,6 +11,7 @@ from watchsync.applier import (
     ECHO_WINDOW_S,
     LIBRARY_INDEX_TTL_S,
     MAX_KNOWN_FILES,
+    SETTLE_STEPS,
     FilePoller,
     KodiApplier,
     ManualChanges,
@@ -436,75 +437,109 @@ def show(kodi, folder: str = FOLDER, **playcounts: int) -> None:
     kodi.directories[folder] = items
 
 
+def settle(poller, folder: str = FOLDER) -> None:
+    """The folder stays shown for SETTLE_STEPS seconds: the first look is the baseline."""
+    for _ in range(SETTLE_STEPS + 1):
+        poller.touch(folder)
+
+
 def poller_with(kodi, clock, known=None, folder=FOLDER):
-    """A poller whose shown folder has already settled (the first look at a folder is skipped)."""
+    """A poller with a baseline for the folder (what Kodi lists at that moment)."""
     applier, _ = make_applier(kodi, clock)
     engine = FakeEngine(known)
     manual = ManualChanges(kodi, MAPS, engine, applier, lambda *a, **k: None)
     poller = FilePoller(kodi, MAPS, manual, applier)
-    poller.poll(folder)
+    settle(poller, folder)
     return poller, engine, applier
 
 
+def asked(kodi) -> list[str]:
+    return [c[1]["directory"] for c in kodi.calls if c[0] == "Files.GetDirectory"]
+
+
 def test_a_file_the_add_on_never_saw_is_noticed_when_it_is_marked(kodi, clock):
-    poller, engine, _ = poller_with(kodi, clock)
     show(kodi, E01=0, E02=1)
-    assert poller.poll(FOLDER) == 0 and engine.recorded == []  # the first look is the baseline
-    assert poller.poll(FOLDER) == 0
+    poller, engine, _ = poller_with(kodi, clock)  # the baseline is taken when the folder settles
+    assert poller.check(FOLDER) == 0 and engine.recorded == []
     show(kodi, E01=1, E02=1)  # E01 marked as watched in the file list
-    assert poller.poll(FOLDER) == 1
+    assert poller.check(FOLDER) == 1
     show(kodi, E01=1, E02=0)  # E02 unmarked
-    assert poller.poll(FOLDER) == 1
+    assert poller.check(FOLDER) == 1
     assert [(a[0], a[1], a[4]) for a, _ in engine.recorded] == [
         ("Show/S01/E01.mkv", "watched", 1),
         ("Show/S01/E02.mkv", "unwatched", 0),
     ]
 
 
-def test_nothing_is_asked_while_the_shown_folder_changes_or_is_no_file_folder(kodi, clock):
-    poller, _, _ = poller_with(kodi, clock, folder="")
+def test_the_baseline_is_taken_once_after_the_folder_stayed_shown(kodi, clock):
     show(kodi, E01=0)
-    asked = lambda: [c for c in kodi.calls if c[0] == "Files.GetDirectory"]  # noqa: E731
-    assert poller.poll("") == 0 and poller.poll("") == 0
-    for folder in ("videodb://tvshows/titles/", "plugin://x/", "sources://video/"):
-        poller.poll(folder)
-        assert poller.poll(folder) == 0
-    poller.poll(FOLDER)  # the folder changed: skipped, the user is moving around
-    assert asked() == []
-    assert poller.poll(FOLDER) == 0  # still shown: asked now
-    assert [c[1]["directory"] for c in asked()] == [FOLDER]
+    applier, _ = make_applier(kodi, clock)
+    poller = FilePoller(
+        kodi, MAPS, ManualChanges(kodi, MAPS, FakeEngine(), applier, print), applier
+    )
+    for _ in range(SETTLE_STEPS):
+        poller.touch(FOLDER)
+    assert asked(kodi) == []  # not yet: the folder only just settled
+    poller.touch(FOLDER)
+    poller.touch(FOLDER)
+    assert asked(kodi) == [FOLDER]  # once, not every second
+
+
+def test_nothing_is_asked_while_the_shown_folder_changes_or_is_no_file_folder(kodi, clock):
+    show(kodi, E01=0)
+    applier, _ = make_applier(kodi, clock)
+    poller = FilePoller(
+        kodi, MAPS, ManualChanges(kodi, MAPS, FakeEngine(), applier, print), applier
+    )
+    for folder in ("", "videodb://tvshows/titles/", "plugin://x/", "sources://video/"):
+        settle(poller, folder)
+        assert poller.check(folder) == 0
+    for step in range(20):  # moving around: a new folder every second
+        poller.touch(f"nfs://nas/Media/Show/S0{step}/")
+    assert asked(kodi) == []
+    settle(poller, FOLDER)
+    assert asked(kodi) == [FOLDER]
+
+
+def test_check_needs_a_baseline_for_the_folder_that_is_still_shown(kodi, clock):
+    show(kodi, E01=0)
+    poller, _, _ = poller_with(kodi, clock)
+    before = len(asked(kodi))
+    assert poller.check("nfs://nas/Media/Other/") == 0  # another folder
+    poller.touch("nfs://nas/Media/Other/")  # the user moved: no baseline for it yet
+    assert poller.check(FOLDER) == 0 and poller.check("nfs://nas/Media/Other/") == 0
+    assert len(asked(kodi)) == before
 
 
 def test_a_listing_that_fails_or_has_odd_entries_changes_nothing(kodi, clock):
-    poller, engine, _ = poller_with(kodi, clock)
-    assert poller.poll(FOLDER) == 0  # Kodi cannot list the folder
+    poller, engine, _ = poller_with(kodi, clock)  # Kodi cannot list the folder
+    assert poller.check(FOLDER) == 0
     show(kodi)  # only a sub folder and odd entries
-    assert poller.poll(FOLDER) == 0 and engine.recorded == []
+    assert poller.check(FOLDER) == 0 and engine.recorded == []
 
 
 def test_what_the_add_on_wrote_itself_is_no_manual_change(kodi, clock):
     other = "nfs://nas/Media/Other/"
+    show(kodi, folder=other, B=0)
     poller, engine, applier = poller_with(kodi, clock, folder=other)
     applier.apply([ev(media="Other/B.mkv", kind="watched", playcount=1)], {})
     assert applier.file_playcounts[other + "B.mkv"] == 1
     show(kodi, folder=other, B=1)  # Kodi shows what we wrote
-    assert poller.poll(other) == 0 and engine.recorded == []
+    assert poller.check(other) == 0 and engine.recorded == []
 
 
 def test_a_change_that_matches_the_nas_state_creates_no_event(kodi, clock):
     known = ev(media="Show/S01/E01.mkv", kind="watched", playcount=1)
-    poller, engine, _ = poller_with(kodi, clock, known=known)
     show(kodi, E01=0)
-    poller.poll(FOLDER)
+    poller, engine, _ = poller_with(kodi, clock, known=known)
     show(kodi, E01=1)
-    assert poller.poll(FOLDER) == 0 and engine.recorded == []
+    assert poller.check(FOLDER) == 0 and engine.recorded == []
 
 
 def test_only_the_newest_playcounts_are_remembered(kodi, clock, monkeypatch):
     monkeypatch.setattr("watchsync.applier.MAX_KNOWN_COUNTS", 3)
-    poller, _, applier = poller_with(kodi, clock)
     show(kodi, A=0, B=0, C=0, D=0, E=0)
-    poller.poll(FOLDER)
+    _, _, applier = poller_with(kodi, clock)
     assert list(applier.file_playcounts) == [FOLDER + n + ".mkv" for n in "CDE"]
 
 

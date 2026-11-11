@@ -28,6 +28,8 @@ Applied = Dict[str, Dict[str, Any]]
 # The library list is reused this long (a miss or a failed write refreshes it at once)
 LIBRARY_INDEX_TTL_S = 300.0
 MAX_KNOWN_COUNTS = 5000
+# Service steps (seconds) a folder must stay shown before it is looked at
+SETTLE_STEPS = 3
 MAX_KNOWN_FILES = 300
 ECHO_WINDOW_S = 5.0
 
@@ -369,9 +371,13 @@ class FilePoller:
     Kodi does not have to announce such a change. So the folder shown in the file view is asked
     for its files and their playcounts (one request, also for files this add-on never saw); a
     change since the last look is a manual change. What this add-on wrote itself is the baseline,
-    so its own writes are no change. Many single requests next to Kodi listing a share once froze
-    Kodi (navigating up a folder), so nothing happens while the shown folder changes: only a
-    folder still shown at the previous look is asked."""
+    so its own writes are no change.
+
+    Asking costs Kodi a listing of the share, and many requests next to Kodi listing a share once
+    froze Kodi (navigating up a folder). So the service only calls touch() every second with the
+    shown folder: after SETTLE_STEPS in a row one look is the baseline. check() compares with it,
+    when a context menu closed (a mark was just set) and now and then; nothing is asked while the
+    shown folder changes."""
 
     def __init__(
         self,
@@ -385,6 +391,8 @@ class FilePoller:
         self.manual = manual
         self.applier = applier
         self.last_folder = ""
+        self.steady = 0
+        self.baselined = ""
 
     def _files(self, folder: str) -> dict[str, int]:
         """path -> playcount of the files in a folder (nothing if Kodi cannot list it)."""
@@ -405,13 +413,7 @@ class FilePoller:
                 found[path] = count
         return found
 
-    def poll(self, folder: str) -> int:
-        """Look at the folder that is shown right now; returns how many manual changes became
-        events."""
-        settled = is_file_folder(folder) and folder == self.last_folder
-        self.last_folder = folder
-        if not settled:
-            return 0
+    def _compare(self, folder: str) -> int:
         changes = 0
         counts = self.applier.file_playcounts
         for path, count in self._files(folder).items():
@@ -422,3 +424,21 @@ class FilePoller:
         while len(counts) > MAX_KNOWN_COUNTS:
             counts.pop(next(iter(counts)))
         return changes
+
+    def touch(self, folder: str) -> None:
+        """Called every second with the shown folder: once it stayed for SETTLE_STEPS calls, the
+        first look at it is the baseline."""
+        if folder == self.last_folder:
+            self.steady += 1
+        else:
+            self.last_folder, self.steady, self.baselined = folder, 0, ""
+        if is_file_folder(folder) and self.steady >= SETTLE_STEPS and self.baselined != folder:
+            self._compare(folder)
+            self.baselined = folder
+
+    def check(self, folder: str) -> int:
+        """Compare the shown folder with the baseline; returns how many manual changes became
+        events. Nothing happens for a folder without a baseline."""
+        if not self.baselined or folder != self.baselined or folder != self.last_folder:
+            return 0
+        return self._compare(folder)

@@ -28,6 +28,7 @@ STEP_S = 1.0
 METHOD_SYNC = "Other.SyncNow"
 METHOD_REBUILD = "Other.Rebuild"
 METHOD_UPDATE = "VideoLibrary.OnUpdate"
+LOOKS_AFTER_MARK = 2  # looks at the shown folder after a mark (the database may lag a second)
 NOTIFY_SYNC = f"NotifyAll({ADDON_ID},SyncNow)"
 NOTIFY_REBUILD = f"NotifyAll({ADDON_ID},Rebuild)"
 
@@ -68,6 +69,7 @@ class Env:
     rpc: Rpc
     friendly_name: Callable[[], str]
     folder: Callable[[], str]
+    menu_open: Callable[[], bool]
     opener: Callable[[str], Any]
     make_backend: Callable[[str], Backend]
 
@@ -83,6 +85,8 @@ class Service:
         self.applier: KodiApplier | None = None
         self.manual: ManualChanges | None = None
         self.poller: FilePoller | None = None
+        self._menu_was_open = False
+        self._looks = 0  # looks at the shown folder still to do after a context menu closed
         self.next_sync = 0.0
         self.next_save = 0.0
 
@@ -136,7 +140,7 @@ class Service:
         )
         engine.applied_done(events)
         if self.poller and not playing:
-            self.poller.poll(self.env.folder())
+            self.poller.check(self.env.folder())
         engine.save()
         self._write_status(engine, config)
         self.log.flush()
@@ -161,6 +165,7 @@ class Service:
             return
         while monitor.updates:
             self.manual.handle(monitor.updates.pop(0))
+            self._looks = LOOKS_AFTER_MARK  # Kodi announced a change: look at the shown folder
         now = self.env.mono()
         if monitor.rebuild:
             monitor.rebuild = False
@@ -171,6 +176,24 @@ class Service:
         if now >= self.next_save:
             self.player.poll()
             self.next_save = now + self.config.save_interval
+        self._watch_marks()
+
+    def _watch_marks(self) -> None:
+        """Marks set by hand in a file list. The trigger is the marking itself: Kodi announces a
+        change (VideoLibrary.OnUpdate) or a context menu just closed (it may have set a mark).
+        The shown folder is then compared with the baseline at once and once more a second later."""
+        tracker = self.player.tracker
+        if not self.poller or (tracker and tracker.current):
+            return
+        folder = self.env.folder()
+        self.poller.touch(folder)
+        open_now = self.env.menu_open()
+        if self._menu_was_open and not open_now:
+            self._looks = LOOKS_AFTER_MARK
+        self._menu_was_open = open_now
+        if self._looks:
+            self._looks -= 1
+            self.poller.check(folder)
 
     def run(self) -> None:
         self.log("Service started")
@@ -198,6 +221,7 @@ def run_service() -> None:
         rpc=make_rpc(xbmc.executeJSONRPC),
         friendly_name=lambda: xbmc.getInfoLabel("System.FriendlyName"),
         folder=lambda: xbmc.getInfoLabel("Container.FolderPath"),
+        menu_open=lambda: xbmc.getCondVisibility("Window.IsActive(contextmenu)"),
         opener=xbmcvfs.File,
         make_backend=VfsBackend,
     )

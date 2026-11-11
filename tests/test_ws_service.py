@@ -44,6 +44,7 @@ class Setup:
         self.rig = Rig()
         self.kodi = FakeKodi()
         self.folder = ""  # the folder shown in the file view
+        self.menu_open = False  # a context menu is open
         self.sink: list[tuple[str, int]] = []
         values: dict[str, Any] = {
             "storage_path": NAS,
@@ -65,6 +66,7 @@ class Setup:
             rpc=self.kodi,
             friendly_name=lambda: "Kodi Büro",
             folder=lambda: self.folder,
+            menu_open=lambda: self.menu_open,
             opener=lambda path: (_ for _ in ()).throw(OSError("no")),
             make_backend=lambda path: VfsBackend(path, LAYOUT, self.rig.vfs),
         )
@@ -139,6 +141,61 @@ def test_medium_in_playback_is_deferred_until_it_stopped():
     tracker.current = None
     setup.service.sync()
     assert len(setup.kodi.sets()) == 1
+
+
+MARKED = "nfs://nas/Media/Show/S01/"
+
+
+def listing(setup: Setup, **playcounts: int) -> None:
+    setup.kodi.directories[MARKED] = [
+        {"file": f"{MARKED}{name}.mkv", "filetype": "file", "playcount": count}
+        for name, count in playcounts.items()
+    ]
+
+
+def settled_in_the_folder(setup: Setup) -> None:
+    setup.folder = MARKED
+    listing(setup, E01=0)
+    setup.service.build()
+    setup.service.sync()
+    for _ in range(4):  # the folder stays shown: the baseline is taken
+        setup.service.step()
+
+
+def test_a_closing_context_menu_makes_the_service_look_at_the_shown_folder_at_once():
+    setup = Setup()
+    settled_in_the_folder(setup)
+    listing(setup, E01=1)  # the user marks E01 as watched in the context menu ...
+    setup.menu_open = True
+    setup.service.step()  # ... the menu is open: nothing yet
+    assert "Show/S01/E01.mkv" not in engine_of(setup.service).state
+    setup.menu_open = False
+    setup.service.step()  # the menu closed: looked at once
+    assert engine_of(setup.service).state["Show/S01/E01.mkv"].type == "watched"
+
+
+def test_a_notification_from_kodi_makes_the_service_look_at_the_shown_folder_at_once():
+    setup = Setup()
+    settled_in_the_folder(setup)
+    listing(setup, E01=1)
+    setup.monitor.updates.append("{}")  # Kodi announced a change (the content does not matter)
+    setup.service.step()
+    assert engine_of(setup.service).state["Show/S01/E01.mkv"].type == "watched"
+
+
+def test_the_service_does_not_look_at_folders_while_a_video_plays():
+    setup = Setup()
+    settled_in_the_folder(setup)
+    tracker = setup.service.player.tracker
+    assert tracker is not None
+    tracker.started("nfs://nas/Media/Filme/A.mkv", 0.0, 100.0)
+    asked = len(setup.kodi.calls)
+    listing(setup, E01=1)
+    setup.menu_open = True
+    setup.service.step()
+    setup.menu_open = False
+    setup.service.step()
+    assert not [c for c in setup.kodi.calls[asked:] if c[0] == "Files.GetDirectory"]
 
 
 def test_step_handles_requests_and_intervals():
