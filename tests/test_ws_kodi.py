@@ -443,11 +443,24 @@ def test_progress_pause_and_stop_events(env):
     assert env.tracker.current is None
 
 
-def test_stop_near_the_beginning_resets_the_resume_point(env):
+def test_a_quick_look_at_a_file_does_not_overwrite_the_saved_position(env):
+    """Playback that starts at 0 and stops within seconds (resume not applied, a mis-click)
+    must not replace the position another playback saved with 0."""
+    put_foreign_progress(env)
+    saved = env.engine.lookup("Filme/A.mkv", None)
     env.tracker.started(PATH, 0.0, 7000.0)
+    env.tracker.tick(0.1, 7000.0)
+    env.tracker.paused(0.1)
     env.tracker.tick(2.0, 7000.0)
     env.tracker.stopped()
-    assert env.events()[-1].type == "reset"
+    assert env.events() == []
+    assert env.engine.lookup("Filme/A.mkv", None) == saved
+
+
+def test_progress_is_recorded_from_five_seconds_on(env):
+    env.tracker.started(PATH, 0.0, 7000.0)
+    env.tracker.paused(5.0)
+    assert [e.position_s for e in env.events()] == [5.0]
 
 
 def test_threshold_marks_watched_once_and_counts_up(env):

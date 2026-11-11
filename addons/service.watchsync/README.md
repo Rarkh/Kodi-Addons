@@ -96,7 +96,7 @@ files do not match (the fingerprint still does once both devices played the file
 - **Playback:** `onAVStarted`, pause, stop and end create events (also for files that are not in
   the library). The position is saved locally every N seconds (default 10), at pause/stop/end an
   event is written. From 90 % (setting) or at the end the medium counts as watched
-  (`playcount` + 1); stopping within the first 5 s resets the resume point.
+  (`playcount` + 1); nothing is written while the position is below 5 s, so a quick look at a file never overwrites the position another playback saved.
 - **Kodi start and every sync interval (default 30 s):** the NAS state is read and merged.
 
 ### Reconciling with Kodi's own database

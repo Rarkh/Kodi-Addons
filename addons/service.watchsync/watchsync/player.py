@@ -14,7 +14,9 @@ from .events import Event
 from .logger import DEBUG, INFO, WARNING
 from .mediaid import Fingerprinter, Mapping, is_trackable, to_media_id
 
-RESET_BELOW_S = 5.0
+# Below this position nothing is written: a playback that starts at 0 (resume not applied yet,
+# a quick look at a file) must not overwrite the saved state of the medium with "0"
+QUIET_START_S = 5.0
 RESUME_TOLERANCE_S = 5.0
 RESUME_AUTO, RESUME_ASK = 0, 1
 
@@ -89,6 +91,8 @@ class Tracker:
         return cur.position / cur.duration if cur.duration > 0 else 0.0
 
     def _record(self, cur: Current, kind: str, force: bool) -> None:
+        if kind == "progress" and cur.position < QUIET_START_S:
+            return
         position = 0.0 if kind in ("watched", "reset") else cur.position
         self.engine.record(
             cur.media_id,
@@ -130,8 +134,6 @@ class Tracker:
             return
         if self._ratio(cur) >= self.threshold:
             self._mark_watched(cur)
-        elif cur.position < RESET_BELOW_S:
-            self._record(cur, "reset", True)
         else:
             self._record(cur, "progress", True)
 
