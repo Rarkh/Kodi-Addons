@@ -7,7 +7,7 @@ standard library are used.
 
 - Media are recognised by their **path on the NAS**, never by Kodi database ids.
 - Files that are **not in the Kodi library** are tracked too (played from an NFS/SMB source).
-- Status 0.1: development version, see "What still has to be tested on real devices".
+- Status 0.3: first release, tested on two Kodi installations (Windows and Android); see "What still has to be tested on real devices".
 
 ## Architecture: immutable event files
 
