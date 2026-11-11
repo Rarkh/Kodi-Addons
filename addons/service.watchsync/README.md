@@ -123,9 +123,11 @@ The NAS is the truth; Kodi's database is only the display on this device.
    WatchSync.
 
 **Marking by hand on files outside the library:** Kodi does not have to announce it, so at every sync
-the playcount of the newest files this device knows (played here or written by this add-on) is read;
-a change since the last look becomes a `watched`/`unwatched` event. Files never played or written
-here are not looked at.
+the playcount of the known files (played here or written by this add-on) **in the folder shown in
+the file view** is read (at most 25); a change since the last look becomes a `watched`/`unwatched`
+event. Kodi checks each file on the share for such a request, and many requests next to Kodi listing
+a share once froze Kodi, which is why only the shown folder is looked at. Files never played or
+written here are not looked at.
 
 **Flags for files outside the library** (watched mark, "in progress" mark in file lists): Kodi keeps
 them per path, so the add-on needs the path *this* device uses. It learns it from the files this

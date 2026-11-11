@@ -17,6 +17,7 @@ from .mediaid import (
     file_name_key,
     from_media_id,
     is_trackable,
+    normalize_path,
     same_medium,
     to_media_id,
 )
@@ -24,7 +25,7 @@ from .mediaid import (
 Rpc = Callable[[str, Dict[str, Any]], Dict[str, Any]]
 Applied = Dict[str, Dict[str, Any]]
 
-MAX_POLLED = 100
+MAX_POLLED = 25
 MAX_KNOWN_FILES = 300
 ECHO_WINDOW_S = 5.0
 
@@ -338,8 +339,8 @@ class FilePoller:
     """Notices "marked as watched/unwatched" on files outside the library.
 
     Kodi does not have to announce such a change, so the playcount of the files this device
-    knows is read from time to time. A change since the last look is a manual change (what this
-    add-on wrote itself is the baseline, so its own writes are no change)."""
+    knows in the folder shown is read from time to time. A change since the last look is a manual
+    change (what this add-on wrote itself is the baseline, so its own writes are no change)."""
 
     def __init__(
         self,
@@ -361,14 +362,24 @@ class FilePoller:
             return None
         return count if isinstance(count, int) and not isinstance(count, bool) else None
 
-    def poll(self, own_paths: Iterable[str]) -> int:
-        """Look at the newest known files; returns how many manual changes became events."""
-        paths = {
-            path: to_media_id(path, self.mappings).id for path in list(own_paths)[-MAX_POLLED:]
-        }
-        paths.update(list(self.applier.file_media.items())[-MAX_POLLED:])
+    @staticmethod
+    def _key(folder: str) -> str:
+        return normalize_path(folder).rstrip("/").lower()
+
+    def poll(self, own_paths: Iterable[str], folder: str) -> int:
+        """Look at the known files of the folder that is shown right now.
+
+        Files.GetFileDetails makes Kodi check the file on the share, and many of those calls next
+        to Kodi listing a share froze Kodi once; a marked file is in the shown folder anyway.
+        Returns how many manual changes became events."""
+        here = self._key(folder)
+        if not here:
+            return 0
+        known = {path: to_media_id(path, self.mappings).id for path in own_paths}
+        known.update(self.applier.file_media)
+        shown = [path for path in known if self._key(path.rsplit("/", 1)[0]) == here]
         changes = 0
-        for path in paths:
+        for path in shown[-MAX_POLLED:]:
             count = self._playcount(path)
             if count is None:
                 continue

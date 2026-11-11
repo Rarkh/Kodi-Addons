@@ -43,6 +43,7 @@ class Setup:
     def __init__(self, name: str = "b", **settings: Any) -> None:
         self.rig = Rig()
         self.kodi = FakeKodi()
+        self.folder = ""  # the folder shown in the file view
         self.sink: list[tuple[str, int]] = []
         values: dict[str, Any] = {
             "storage_path": NAS,
@@ -63,6 +64,7 @@ class Setup:
             mono=self.rig.clock.mono,
             rpc=self.kodi,
             friendly_name=lambda: "Kodi Büro",
+            folder=lambda: self.folder,
             opener=lambda path: (_ for _ in ()).throw(OSError("no")),
             make_backend=lambda path: VfsBackend(path, LAYOUT, self.rig.vfs),
         )

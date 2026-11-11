@@ -67,6 +67,7 @@ class Env:
     mono: Callable[[], float]
     rpc: Rpc
     friendly_name: Callable[[], str]
+    folder: Callable[[], str]
     opener: Callable[[str], Any]
     make_backend: Callable[[str], Backend]
 
@@ -133,7 +134,7 @@ class Service:
             engine.state.values(), engine.local.applied, playing, engine.local.own_paths
         )
         if self.poller and not playing:
-            self.poller.poll(engine.local.own_paths)
+            self.poller.poll(engine.local.own_paths, self.env.folder())
         engine.save()
         self._write_status(engine, config)
         self.log.flush()
@@ -194,6 +195,7 @@ def run_service() -> None:
         mono=time.monotonic,
         rpc=make_rpc(xbmc.executeJSONRPC),
         friendly_name=lambda: xbmc.getInfoLabel("System.FriendlyName"),
+        folder=lambda: xbmc.getInfoLabel("Container.FolderPath"),
         opener=xbmcvfs.File,
         make_backend=VfsBackend,
     )

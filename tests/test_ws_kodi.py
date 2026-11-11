@@ -378,6 +378,7 @@ def test_ignored_notifications_are_logged_for_debugging(kodi, clock):
 # ---- files outside the library: noticing manual marks by looking at the playcount ----------
 
 FILE = "nfs://nas/Media/Show/S01/E01.mkv"
+FOLDER = "nfs://nas/Media/Show/S01/"
 
 
 def poller_with(kodi, clock, own_paths=(FILE,), known=None):
@@ -390,16 +391,30 @@ def poller_with(kodi, clock, own_paths=(FILE,), known=None):
 def test_a_change_of_the_playcount_since_the_last_look_becomes_an_event(kodi, clock):
     poller, engine, _, own = poller_with(kodi, clock)
     kodi.file_playcounts[FILE] = 0
-    assert poller.poll(own) == 0 and engine.recorded == []  # the first look is only a baseline
-    assert poller.poll(own) == 0
+    assert (
+        poller.poll(own, FOLDER) == 0 and engine.recorded == []
+    )  # the first look is only a baseline
+    assert poller.poll(own, FOLDER) == 0
     kodi.file_playcounts[FILE] = 1  # marked as watched in the file list
-    assert poller.poll(own) == 1
+    assert poller.poll(own, FOLDER) == 1
     kodi.file_playcounts[FILE] = 0  # and unmarked again
-    assert poller.poll(own) == 1
+    assert poller.poll(own, FOLDER) == 1
     assert [(a[0], a[1], a[4]) for a, _ in engine.recorded] == [
         ("Show/S01/E01.mkv", "watched", 1),
         ("Show/S01/E01.mkv", "unwatched", 0),
     ]
+
+
+def test_only_files_of_the_folder_that_is_shown_are_looked_at(kodi, clock):
+    poller, _, _, own = poller_with(kodi, clock)
+    kodi.file_playcounts[FILE] = 0
+    assert poller.poll(own, "") == 0  # no folder shown (or not a file view): no look at all
+    assert poller.poll(own, "nfs://nas/Media/Other/") == 0
+    assert [c for c in kodi.calls if c[0] == "Files.GetFileDetails"] == []
+    assert (
+        poller.poll(own, FOLDER.upper().rstrip("/")) == 0
+    )  # case and trailing slash do not matter
+    assert [c[1]["file"] for c in kodi.calls if c[0] == "Files.GetFileDetails"] == [FILE]
 
 
 def test_what_the_add_on_wrote_itself_is_no_manual_change(kodi, clock):
@@ -408,25 +423,25 @@ def test_what_the_add_on_wrote_itself_is_no_manual_change(kodi, clock):
     written = "nfs://nas/Media/Other/B.mkv"
     assert applier.file_playcounts[written] == 1
     kodi.file_playcounts[written] = 1  # Kodi shows what we wrote
-    assert poller.poll([]) == 0 and engine.recorded == []
+    assert poller.poll([], "nfs://nas/Media/Other/") == 0 and engine.recorded == []
 
 
 def test_a_change_that_matches_the_nas_state_creates_no_event(kodi, clock):
     known = ev(media="Show/S01/E01.mkv", kind="watched", playcount=1)
     poller, engine, _, own = poller_with(kodi, clock, known=known)
     kodi.file_playcounts[FILE] = 0
-    poller.poll(own)
+    poller.poll(own, FOLDER)
     kodi.file_playcounts[FILE] = 1
-    assert poller.poll(own) == 0 and engine.recorded == []
+    assert poller.poll(own, FOLDER) == 0 and engine.recorded == []
 
 
 def test_unknown_or_odd_answers_are_skipped(kodi, clock):
     poller, engine, _, own = poller_with(kodi, clock)
-    assert poller.poll(own) == 0  # Files.GetFileDetails fails for the file
+    assert poller.poll(own, FOLDER) == 0  # Files.GetFileDetails fails for the file
     kodi.file_playcounts[FILE] = True
-    assert poller.poll(own) == 0
+    assert poller.poll(own, FOLDER) == 0
     kodi.file_playcounts[FILE] = None
-    assert poller.poll(own) == 0 and engine.recorded == []
+    assert poller.poll(own, FOLDER) == 0 and engine.recorded == []
 
 
 def test_a_reset_gives_no_playcount_baseline(kodi, clock):
