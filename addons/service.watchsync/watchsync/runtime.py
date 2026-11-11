@@ -116,6 +116,7 @@ class Service:
         self.applier = KodiApplier(env.rpc, config.mappings, env.mono, self.log)
         self.manual = ManualChanges(env.rpc, config.mappings, engine, self.applier, self.log)
         self.poller = FilePoller(env.rpc, config.mappings, self.manual, self.applier)
+        self.poller.learn = engine.learn_path
         self.player.tracker = Tracker(
             engine,
             config.mappings,

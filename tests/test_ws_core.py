@@ -374,7 +374,8 @@ def test_file_name_key():
         ("nfs://192.168.0.5/RAID5/a.mkv", "nfs://192.168.0.5/"),
         ("SMB://NAS/Share/a.mkv", "smb://nas/"),
         ("R:\\Filme\a.mkv", "r:/"),
-        ("/media/nas/a.mkv", ""),
+        ("/media/nas/a.mkv", "/media/nas/"),
+        ("/a.mkv", ""),
     ],
 )
 def test_location_of(path, location):
@@ -435,3 +436,13 @@ def test_resolver_learns_nothing_from_unusable_pairs(known):
 )
 def test_is_file_folder(folder, usable):
     assert mediaid.is_file_folder(folder) is usable
+
+
+def test_a_local_path_of_this_device_resolves_to_itself():
+    from watchsync.mediaid import PathResolver, location_of
+
+    assert location_of("/storage/1234-5678/KODI/a.mkv") == "/storage/1234-5678/"
+    assert location_of("/a.mkv") == ""
+    resolver = PathResolver(["/storage/1234-5678/KODI/x.mkv"], [])
+    assert resolver.resolve("/storage/1234-5678/KODI/y.mkv") == "/storage/1234-5678/KODI/y.mkv"
+    assert resolver.resolve("/storage/emulated/0/y.mkv") is None

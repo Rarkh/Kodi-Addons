@@ -23,7 +23,7 @@ from .events import (
     parse_filename,
 )
 from .logger import DEBUG, INFO, WARNING
-from .mediaid import file_name_key, same_medium
+from .mediaid import PathResolver, file_name_key, same_medium
 from .merge import filter_future, merge
 from .store import LocalState, StateStore
 
@@ -437,6 +437,27 @@ class SyncEngine:
             return
         paths.append(path)
         del paths[:-MAX_OWN_PATHS]
+
+    def learn_path(self, path: str) -> bool:
+        """A file seen in the file view names a medium other devices wrote, and this device cannot
+        translate that device's location yet: keep the path (one per location is enough) and try
+        the entries again that had no local path. Returns whether something was learned."""
+        if path in self.local.own_paths:
+            return False
+        for key in sorted(self._name_ids.get(file_name_key(path), ())):
+            known = PathResolver(self.local.own_paths, [key]).resolve(key)
+            if same_medium(key, path) and known is None:
+                self.remember_path(path)
+                self._retry_unresolved()
+                return True
+        return False
+
+    def _retry_unresolved(self) -> None:
+        applied = self.local.applied
+        for key in [key for key, entry in applied.items() if not entry.get("ok", True)]:
+            del applied[key]
+            self.unapplied.add(key)
+        self._rev += 1
 
     def status(self) -> dict[str, Any]:
         return {

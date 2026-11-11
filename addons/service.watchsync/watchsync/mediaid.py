@@ -141,11 +141,12 @@ def same_medium(first: str, second: str) -> bool:
     return depth >= MIN_MATCH_PARTS and one[-depth:] == two[-depth:]
 
 
-_ANY_LOCATION = re.compile(r"^(?:[A-Za-z][A-Za-z0-9+.-]*://[^/]*/|[A-Za-z]:/)")
+_ANY_LOCATION = re.compile(r"^(?:[A-Za-z][A-Za-z0-9+.-]*://[^/]*/|[A-Za-z]:/|/[^/]+/[^/]+/)")
 
 
 def location_of(path: str) -> str:
-    """Where a path lives: "nfs://host/" or a drive "r:/" (lower case); "" for anything else."""
+    """Where a path lives: "nfs://host/", a drive "r:/" or the first two folders of a local
+    path "/storage/1234-5678/" (lower case); "" for anything else."""
     match = _ANY_LOCATION.match(normalize_path(path))
     return match.group(0).lower() if match else ""
 

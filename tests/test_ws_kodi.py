@@ -1003,3 +1003,29 @@ def test_player_callback_errors_are_logged_not_raised(player):
 
 def test_current_dataclass_defaults():
     assert not Current("m", False, None, 1.0, 0.0, 0).watched
+
+
+def test_the_poller_tells_every_listed_file_to_learn(kodi, clock):
+    poller, _, _ = poller_with(kodi, clock)
+    seen: list[str] = []
+    poller.learn = lambda path: seen.append(path) or False
+    show(kodi, E01=0, E02=1)
+    poller.check(FOLDER)
+    assert seen == [FOLDER + "E01.mkv", FOLDER + "E02.mkv"]
+
+
+def test_a_library_item_is_also_written_for_the_path_of_the_file_view(kodi, clock):
+    """The library has the local copy; the user plays the same file from the share."""
+    kodi.movies = [{"movieid": 5, "file": "/storage/1234-5678/KODI/Show/S01/E01.mkv"}]
+    applier = KodiApplier(kodi, [], lambda: clock[0], lambda msg, level=1: None)
+    share = "nfs://nas/SERIES/Show/S01/E01.mkv"
+    own = ["nfs://nas/SERIES/Show/S01/E02.mkv"]  # played from the share before
+    applied: dict = {}
+    assert applier.apply([ev(media=share, position_s=60.0, unmapped=True)], applied, None, own) == 1
+    written = [(c[0], c[1].get("movieid") or c[1].get("file")) for c in kodi.sets()]
+    assert written == [("VideoLibrary.SetMovieDetails", 5), ("Files.SetFileDetails", share)]
+    elsewhere = "smb://elsewhere/Show/S01/E01.mkv"
+    other = ev(media=elsewhere, ts="2026-11-10T12:00:09.000Z", unmapped=True)
+    kodi.calls.clear()
+    assert applier.apply([other], applied, None, own) == 1  # no known path: the item only
+    assert [c[0] for c in kodi.sets()] == ["VideoLibrary.SetMovieDetails"]
