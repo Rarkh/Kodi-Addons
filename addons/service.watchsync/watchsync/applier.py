@@ -26,6 +26,7 @@ Rpc = Callable[[str, Dict[str, Any]], Dict[str, Any]]
 Applied = Dict[str, Dict[str, Any]]
 
 MAX_POLLED = 25
+POLL_BUDGET_S = 2.0
 MAX_KNOWN_FILES = 300
 ECHO_WINDOW_S = 5.0
 
@@ -353,6 +354,7 @@ class FilePoller:
         self.mappings = mappings
         self.manual = manual
         self.applier = applier
+        self.last_folder = ""
 
     def _playcount(self, path: str) -> int | None:
         params = {"file": path, "media": "video", "properties": ["playcount"]}
@@ -370,16 +372,23 @@ class FilePoller:
         """Look at the known files of the folder that is shown right now.
 
         Files.GetFileDetails makes Kodi check the file on the share, and many of those calls next
-        to Kodi listing a share froze Kodi once; a marked file is in the shown folder anyway.
+        to Kodi listing a share froze Kodi (navigating up a folder). So nothing happens while the
+        shown folder changes (the user is moving around): only a folder that is still shown at
+        the next look is checked, and at most POLL_BUDGET_S seconds per look.
         Returns how many manual changes became events."""
         here = self._key(folder)
-        if not here:
+        settled = bool(here) and here == self.last_folder
+        self.last_folder = here
+        if not settled:
             return 0
         known = {path: to_media_id(path, self.mappings).id for path in own_paths}
         known.update(self.applier.file_media)
         shown = [path for path in known if self._key(path.rsplit("/", 1)[0]) == here]
+        started = self.applier.mono()
         changes = 0
         for path in shown[-MAX_POLLED:]:
+            if self.applier.mono() - started > POLL_BUDGET_S:
+                break
             count = self._playcount(path)
             if count is None:
                 continue

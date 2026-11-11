@@ -32,7 +32,7 @@ Every add-on in this repository has its own version and uses
   UTC timestamp, applied to Kodi's database only when newer than what was applied before, with
   echo suppression, capture of manual watched/unwatched marks, resume point applied in advance
   and a fallback seek. Settings, program menu, path mappings, offline queue, local cache.
-  Test build 0.2.18 on the branch `dev`; not released on `main` yet.
+  Test build 0.2.19 on the branch `dev`; not released on `main` yet.
   New menu/settings action "Check for updates" (Kodi refreshes its repositories at once).
   New action "Write test (diagnosis)": tries several file names and write modes in the storage
   location and shows what Kodi answers.
@@ -67,6 +67,8 @@ Every add-on in this repository has its own version and uses
   (0.2.16 used the early start notice onPlayBackStarted; removed again in 0.2.17 after a Kodi freeze.)
   Noticing manual marks: only the known files of the folder shown in the file view are looked at (max
   25) after Kodi froze in a file view while 100 files were checked on the share.
+  Nothing is looked at while the shown folder changes (only a folder still shown at the previous
+  sync), with a budget of 2 s per look.
   Writing waits for NFS attributes to settle before it counts a read-back as failed, and the
   error says whether the write was refused or what was read back.
 
