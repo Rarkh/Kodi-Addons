@@ -7,7 +7,7 @@ standard library are used.
 
 - Media are recognised by their **path on the NAS**, never by Kodi database ids.
 - Files that are **not in the Kodi library** are tracked too (played from an NFS/SMB source).
-- Status 0.1: development version, see "What still has to be tested on real devices".
+- Status 0.3: first release, tested on two Kodi installations (Windows and Android); see "What still has to be tested on real devices".
 
 ## Architecture: immutable event files
 
@@ -55,37 +55,48 @@ continues after everything of its own it finds on the NAS.
 | `events`     | event and snapshot format, strict parsing                               |
 | `merge`      | merge and conflict rules                                                |
 | `backend`    | storage interface and the `xbmcvfs` backend (replaceable, e.g. HTTP)    |
-| `store`      | local cache in the profile (counter, queue, processed events, applied)  |
+| `store`      | local cache in the profile (`state.json` small, `cache.json` big)       |
 | `engine`     | queue/upload, reading, snapshots, clean-up, recovery                    |
 | `applier`    | writes the NAS state into Kodi's database, notices manual changes       |
 | `player`     | `xbmc.Player` adapter and the playback tracker                          |
 | `runtime`    | the service loop; `menu` is the program add-on entry                    |
 
-## Media id and path mappings
+## Media identification (automatic) and path mappings (optional)
 
-`nfs://192.168.178.57/RAID5/Filme/Alien.mkv`, `R:\Filme\Alien.mkv` and
-`/media/nas/Filme/Alien.mkv` should all become `Filme/Alien.mkv`. For that every device lists the
-beginnings of the paths it sees:
+No setup is needed. The same file looks different on every device (`nfs://192.168.178.57/RAID5/Filme/Alien.mkv`,
+`smb://nas/RAID5/Filme/Alien.mkv`, `R:\Filme\Alien.mkv`, `/media/nas/Filme/Alien.mkv`), so a
+medium is recognised in three steps:
+
+1. **Fingerprint** (size plus SHA-1 of the first and last 64 KB, taken when a playback starts):
+   events with the same fingerprint are the same medium, even under another path or name.
+2. **File name and last folders:** protocol, host, share and drive letter are ignored, the
+   comparison is case-insensitive, and the last up to three parts (`Show/Season 01/E01.mkv`) must
+   agree. The file name alone never matches; at least the file name and its folder are needed.
+   This is how a library item on this device is found for a state written by another device.
+3. **Path mapping (optional):** if a share is laid out differently on two devices so that step 2
+   cannot work, list the beginnings of the paths this device sees; the longest prefix wins:
 
 ```
 nfs://192.168.178.57/RAID5/        on the Android box
 R:\                                on Windows
-/media/nas/                        on Linux
 nfs://192.168.178.57/RAID5/Serien/=>Series      optional: "prefix=>base" puts a base in front
 ```
 
-Entries are separated by `|` in the setting (or edit them in the menu *Edit path mappings*).
-The longest matching prefix wins, the comparison ignores case, URL escapes are decoded and
-credentials (`smb://user:pw@`) are never stored. Without a matching mapping the complete path is
-used and the event gets `"unmapped": true` (log and status show how many such media exist; they
-only match on devices that see the identical path). The file name alone is never the id.
+Mapped paths turn into the same id (`Filme/Alien.mkv`) on every device. Entries are separated by
+`|` in the setting (or edit them in the menu *Edit path mappings*). Credentials
+(`smb://user:pw@`) are never stored and URL escapes are decoded. Without a mapping the event
+carries the full path as id and `"unmapped": true`; this is normal and works through steps 1 and 2.
+
+Limit of step 2: when a share has the same folders but another share name on two devices **and**
+the file lies only one folder below the share, the share name counts as a third part and the
+files do not match (the fingerprint still does once both devices played the file).
 
 ## What happens on a device
 
 - **Playback:** `onAVStarted`, pause, stop and end create events (also for files that are not in
   the library). The position is saved locally every N seconds (default 10), at pause/stop/end an
   event is written. From 90 % (setting) or at the end the medium counts as watched
-  (`playcount` + 1); stopping within the first 5 s resets the resume point.
+  (`playcount` + 1); no progress is written while the position is below 1 s, so a quick look at a file never overwrites the position another playback saved. Stopping within 1 s of the start of a medium that had a saved position clears that position on all devices (`reset`), also after Kodi's own resume put the playback at that position.
 - **Kodi start and every sync interval (default 30 s):** the NAS state is read and merged.
 
 ### Reconciling with Kodi's own database
@@ -101,9 +112,9 @@ The NAS is the truth; Kodi's database is only the display on this device.
    `unwatched` event is created (not if the state on the NAS already has this playcount, e.g. the
    value Kodi writes itself at the end of a playback).
 4. **Resume point in advance:** the NAS state is applied to Kodi's database at start and at
-   every sync, so Kodi's own "resume or start from beginning" works. `seekTime()` after
-   `onAVStarted` is only the fallback (file without library entry, or applying did not work).
-   Setting *Playback started elsewhere* (jump automatically / ask first) controls that fallback.
+   every sync, so Kodi's own question "resume from ... or start from beginning" appears. The
+   add-on never jumps to a position itself and never asks where to continue; that is Kodi's
+   dialog only.
 5. Positions Kodi writes itself at stop are harmless: the add-on writes its own event with the
    same value.
 6. While a medium is **playing**, foreign events for it are not applied to Kodi; they wait and are
@@ -111,7 +122,42 @@ The NAS is the truth; Kodi's database is only the display on this device.
 7. **Other sync add-ons (e.g. Trakt)** change the same fields. Disable them on devices that run
    WatchSync.
 
+**Marking by hand on files outside the library:** the trigger is the marking itself. When Kodi
+announces a change (`VideoLibrary.OnUpdate`) or a context menu has just closed (it may have set a
+mark), the folder shown in the file view is asked for its files and their playcounts (one request,
+also for files this add-on never saw) and compared with the baseline; a change becomes a
+`watched`/`unwatched` event within a second. The baseline is one look that is taken when a folder
+has stayed shown for 3 seconds; marks that existed before are not sent by this. A mark set by a key
+without a context menu is found by the look at every sync (30 s). Many requests next to Kodi
+listing a share once froze Kodi (navigating up a folder), so nothing is asked while the shown
+folder changes or while a video plays.
+
+**Marking a whole folder** (context menu on a folder): Kodi sets the playcount of all files below it.
+The add-on remembers which item was focused before the menu opened; when the menu closes, that
+folder is walked (at most 3 levels and 40 folders deep, one listing of the share each) and the
+state of every file that differs from what this device knows is sent: watched files that nobody
+knew, and files that are unwatched now but known as watched. Unwatched files nobody knew are not
+sent. There is no baseline for this: the NAS state is the comparison.
+
+**Flags for files outside the library** (watched mark, "in progress" mark in file lists): Kodi keeps
+them per path, so the add-on needs the path *this* device uses. It learns it from the files this
+device played itself: if another device has an event for the same file under another location
+(`smb://nas/` there, `nfs://192.168.0.5/` here), the difference is the translation for all other
+files of that share; a location this device also uses needs none. Without a known path nothing is
+written (Kodi then has no resume point for that file here). Written with
+`Files.SetFileDetails`, which has to be tested on real devices.
+
 Not in Phase 1: repository set-up, Docker/HTTP backend, series special cases beyond the path id.
+
+## Big libraries
+
+Thousands of media are meant to work: a sync round merges only the media that new events belong to
+(not the whole state), only the entries that changed are written to Kodi's database, the list of
+the Kodi library is reused for 5 minutes, and the cache is split: the small part (queue, counters)
+is written at once, the big part (all states, 8 MB for 10,000 media) only when it changed and at
+most once a minute, and when Kodi shuts down. Measured with 10,000 media: a round without news
+costs well under a millisecond (it was about 190 ms). A crash loses at most a minute of the big
+part; it is read again from the NAS.
 
 ## Settings
 
@@ -123,14 +169,30 @@ Not in Phase 1: repository set-up, Docker/HTTP backend, series special cases bey
 | Check for new events every | 30 s    | sync interval                                                |
 | Save position every        | 10 s    | local position saving while playing                          |
 | Mark as watched from       | 90 %    |                                                              |
-| Playback started elsewhere | automatic | fallback seek: automatically or ask first                  |
 | Use local cache            | on      | off: queue and state are not kept between restarts           |
 | Log level                  | normal  | debug adds details to the Kodi log                           |
 
 Menu (*Programs > WatchSync*, also buttons in the settings): sync now, show status, edit path
 mappings, show log, rebuild cache (read everything from the NAS again, unsent events are kept),
-test NAS connection. Menu and service talk through notifications and files in the profile; the
+test NAS connection, check for updates (shows the installed and the offered version, and makes Kodi refresh its repositories), write test (tries several ways of writing a file to the storage location and shows what Kodi answers). Menu and service talk through notifications and files in the profile; the
 service is the only one that writes events.
+
+## NAS permissions (important with several devices)
+
+Every device creates the folders `events/`, `devices/` and `snapshots/` itself if they are missing,
+and the NAS gives them to the user the NFS access is mapped to (often mode 755). A second device
+with a different NFS user then **cannot write** into them, although it can read and create files in
+the parent folder. The symptom is `cannot write ...: the write was refused`; *Test NAS connection*
+checks every folder and names the one that fails.
+
+Fix it once on the NAS, one of:
+
+- NFS export: map all users to one user (all_squash with a fixed anonuid/anongid) and give that
+  user write access.
+- Give the storage folder and its sub folders full access for everybody (mode 777, on Windows
+  `icacls <folder> /grant Jeder:(OI)(CI)F /T` for a share that maps this to unix rights).
+- Create the three folders once by hand (e.g. in Explorer on the share) so that they inherit the
+  rights of the parent folder.
 
 ## Tests
 
@@ -141,10 +203,9 @@ suppression, "NAS newer than applied" and "defer while playing" with mock timest
 ### Trying it with two real Kodi devices
 
 1. Install the add-on on both, give each a different device name and the **same** storage
-   location; set the path mappings so that both see the same `media.id` (status shows media
-   without mapping). *Test NAS connection* must succeed on both.
+   location; *Test NAS connection* must succeed on both. Path mappings are not needed.
 2. Play a movie from the share on device A for a minute, pause. On B: within 30 s the resume
-   point appears (library item) or the fallback seek happens when starting the file.
+   point appears (library item) or in the file list, and Kodi asks where to continue.
 3. Mark something watched on B; A shows it after the next sync. Mark it unwatched on A again.
 4. Rewind on purpose on B (stop at 0:30 after A was at 20:00): A must follow, not keep 20:00.
 5. Pull the network cable while playing, stop, reconnect: the status shows the queued events,
@@ -156,7 +217,7 @@ suppression, "NAS newer than applied" and "defer while playing" with mock timest
 Everything was tested with a fake `xbmcvfs` and fake JSON-RPC only. In particular:
 
 - **`Files.SetFileDetails`** for files outside the library on Kodi 21 (used to apply watched
-  status and resume to such files). If it fails it is logged once, the fallback seek remains,
+  status and resume to such files). If it fails it is logged once, Kodi has no resume point for such files,
   but the "watched" mark of those files will not show in Kodi's file lists.
 - **NFS behaviour on Android**: `xbmcvfs` rename over an existing file, `listdir` on large
   folders, attribute caching (a new event may show up a few seconds late), `Stat.st_mtime`.

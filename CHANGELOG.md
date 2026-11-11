@@ -25,18 +25,40 @@ Every add-on in this repository has its own version and uses
 ## [Unreleased]
 ### Added
 - `repository.rarkh.test` 1.0.0: repository add-on of a test channel (branch `dev`, folder
-  `repo-test/`). `tools/build_repo.py --channel test` builds it; the release channel leaves it out.
-- `service.watchsync`: first working version (Phase 1). Watch status is stored as immutable
-  event files and snapshots on a NAS (via `xbmcvfs`, tmp + rename, no locking), merged by newest
-  UTC timestamp, applied to Kodi's database only when newer than what was applied before, with
-  echo suppression, capture of manual watched/unwatched marks, resume point applied in advance
-  and a fallback seek. Settings, program menu, path mappings, offline queue, local cache.
-  Not released yet: the version in `addon.xml` stays 0.1.0 until the commit that releases it.
+  `repo-test/`). `tools/build_repo.py --channel test --only <id>` builds it with just the named
+  add-ons, so no add-on id is offered by both channels; the release channel leaves it out.
 
 ### Changed
-- `plugin.program.artlibcleanup`: internal refactoring for SonarQube (smaller functions, shared
-  constants), no change in behaviour.
 - `tools/build_repo.py`: the MD5 checksum is marked as not security-relevant (Kodi needs MD5).
+
+## [service.watchsync 0.3.0]
+### Added
+- First release. Keeps watch status (watched/unwatched, resume point) in sync between several Kodi
+  installations through small files on a NAS. Only the Kodi API and the Python standard library;
+  nothing runs on the NAS.
+- Storage as immutable event files and per-device snapshots (written via `xbmcvfs` as tmp + rename,
+  no locking), merged by the newest UTC timestamp; offline queue, local cache, each device cleans up
+  only its own events.
+- Media are recognised automatically across devices (by fingerprint, otherwise by file name and
+  last folders; protocol, host, share, drive and letter case do not matter). Path mappings are
+  optional.
+- The synced state is written to Kodi's database (library items and files outside the library), so
+  Kodi's own "resume from ..." dialog asks where to continue. The add-on never jumps to a position
+  and never asks by itself.
+- Marks set by hand are sent: library items through Kodi's notification, files outside the
+  library by looking at the folder shown in the file view when a mark was set (also whole
+  folders). Stopping within 1 s of the start clears a saved position on all devices.
+- Program menu and settings: sync now, status, path mappings, log, rebuild cache, connection test
+  (writes in every folder), write test, check for updates (shows installed and offered version).
+- Made for big libraries: incremental merge, only changed entries go to Kodi, split cache.
+  Measured with 10,000 media: a sync round without news takes well under a millisecond.
+- English and German texts, README with architecture, settings and a two-device test guide.
+- NAS permissions: all devices must be allowed to write into the sub folders (see the README).
+
+## [plugin.program.artlibcleanup 0.1.4]
+### Changed
+- Internal refactoring for SonarQube (smaller functions, shared constants, one constant for the
+  `Textures.GetTextures` method name), no change in behaviour.
 
 ## [plugin.program.artlibcleanup 0.1.3]
 ### Fixed

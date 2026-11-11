@@ -135,7 +135,8 @@ def test_fingerprinter_caches_and_survives_errors():
 
     printer = mediaid.Fingerprinter(opener, max_entries=2)
     first = printer.get("a")
-    assert printer.get("a") == first and opened == ["a"]
+    assert printer.get("a") == first
+    assert opened == ["a"]
     assert sources["a"].closed
     assert printer.get("missing") is None
     assert printer.get("bad") is None  # size() missing: no fingerprint
@@ -219,8 +220,9 @@ def test_invalid_events_are_rejected(data):
 
 
 def test_newer_format_version_is_reported_separately():
+    data = _bad(v=2)
     with pytest.raises(UnsupportedVersion):
-        event_from_dict(_bad(v=2))
+        event_from_dict(data)
 
 
 def test_decode_rejects_broken_json():
@@ -277,8 +279,9 @@ def replace_seq(event: Event, seq: int) -> Event:
     ],
 )
 def test_invalid_snapshots(data):
+    text = json.dumps(data)
     with pytest.raises(EventError):
-        decode_snapshot(json.dumps(data))
+        decode_snapshot(text)
 
 
 def test_snapshot_with_newer_version():
@@ -324,7 +327,8 @@ def test_different_media_stay_separate_and_unmapped_flag_is_per_id():
     two = _event(media="two", fp="s=2;h=y;", unmapped=True)
     third = _event(media="three", fp="s=1;h=x;")
     result = merge([one, two, third])
-    assert result["two"].unmapped and not result["one"].unmapped
+    assert result["two"].unmapped
+    assert not result["one"].unmapped
     assert set(result) == {"one", "two", "three"}
     assert merge([]) == {}
 
@@ -334,3 +338,100 @@ def test_events_far_in_the_future_are_ignored():
     fine = _event(ts="2026-01-02T11:00:00.000Z")
     broken = _event(device="b", ts="2026-01-05T00:00:00.000Z")
     assert filter_future([fine, broken], now) == ([fine], [broken])
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "same"),
+    [
+        (
+            "nfs://192.168.0.5/RAID5/SERIES/Show/S01/E01.mkv",
+            "smb://nas/RAID5/series/show/s01/e01.MKV",
+            True,
+        ),
+        (r"R:\SERIES\Show\S01\E01.mkv", "nfs://nas/RAID5/SERIES/Show/S01/E01.mkv", True),
+        ("Filme/Alien.mkv", "nfs://nas/RAID5/Filme/Alien.mkv", True),
+        ("nfs://nas/A/Show/S01/E01.mkv", "nfs://nas/A/Other/S01/E01.mkv", False),
+        ("smb://nas/RAID5/film.mkv", "nfs://192.168.0.5/RAID5/Film.mkv", True),
+        ("R:\film.mkv", "nfs://nas/RAID5/film.mkv", False),
+        ("nfs://nas/Alien.mkv", "nfs://nas/Filme/Alien.mkv", False),
+        ("Alien.mkv", "nfs://nas/Filme/Alien.mkv", False),
+        ("", "Filme/Alien.mkv", False),
+    ],
+)
+def test_same_medium_ignores_protocol_host_share_and_case(first, second, same):
+    assert mediaid.same_medium(first, second) is same
+    assert mediaid.same_medium(second, first) is same
+
+
+def test_file_name_key():
+    assert mediaid.file_name_key("smb://nas/Show/S01/E01.MKV") == "e01.mkv"
+    assert mediaid.file_name_key("") == ""
+
+
+@pytest.mark.parametrize(
+    ("path", "location"),
+    [
+        ("nfs://192.168.0.5/RAID5/a.mkv", "nfs://192.168.0.5/"),
+        ("SMB://NAS/Share/a.mkv", "smb://nas/"),
+        ("R:\\Filme\a.mkv", "r:/"),
+        ("/media/nas/a.mkv", ""),
+    ],
+)
+def test_location_of(path, location):
+    assert mediaid.location_of(path) == location
+
+
+NFS_PLAYED = "nfs://10.0.0.5/RAID5/SERIES/Show/S01/E01.mkv"
+
+
+def test_resolver_translates_between_locations_it_has_seen_the_same_file_in():
+    resolver = mediaid.PathResolver([NFS_PLAYED], ["smb://nas/RAID5/SERIES/Show/S01/e01.MKV"])
+    assert resolver.resolve("smb://nas/RAID5/SERIES/Other/S01/E02.mkv") == (
+        "nfs://10.0.0.5/RAID5/SERIES/Other/S01/E02.mkv"
+    )
+    assert resolver.resolve("smb://elsewhere/RAID5/x/y.mkv") is None
+
+
+def test_resolver_uses_the_same_location_unchanged():
+    resolver = mediaid.PathResolver([NFS_PLAYED], [])
+    assert resolver.resolve("nfs://10.0.0.5/Other/x.mkv") == "nfs://10.0.0.5/Other/x.mkv"
+    assert resolver.resolve("nfs://10.9.9.9/Other/x.mkv") is None
+
+
+def test_resolver_keeps_the_windows_style_of_a_drive():
+    resolver = mediaid.PathResolver(
+        [r"R:\SERIES\Show\S01\E01.mkv"], ["smb://nas/SERIES/Show/S01/E01.mkv"]
+    )
+    assert resolver.resolve("smb://nas/SERIES/Other/S01/E02.mkv") == r"R:\SERIES\Other\S01\E02.mkv"
+    assert resolver.resolve("r:/Anything/b.mkv") == "r:\\Anything\\b.mkv"
+
+
+@pytest.mark.parametrize(
+    "known",
+    [
+        "smb://nas/other/name.mkv",  # not the same file
+        "nfs://10.0.0.5/RAID5/SERIES/Show/S01/E01.mkv",  # the same location: nothing to learn
+        "E01.mkv",  # nothing in front of the common tail
+    ],
+)
+def test_resolver_learns_nothing_from_unusable_pairs(known):
+    assert mediaid.PathResolver([NFS_PLAYED], [known]).pairs == []
+
+
+@pytest.mark.parametrize(
+    ("folder", "usable"),
+    [
+        ("nfs://192.168.0.5/RAID5/Show/", True),
+        ("SMB://nas/Share/", True),
+        ("/storage/emulated/0/Serien/", True),
+        ("D:\\Serien\\", True),
+        ("D:/Serien/", True),
+        ("", False),
+        ("videodb://tvshows/titles/", False),
+        ("library://video/", False),
+        ("plugin://plugin.video.x/", False),
+        ("sources://video/", False),
+    ],
+)
+def test_is_file_folder(folder, usable):
+    assert mediaid.is_file_folder(folder) is usable

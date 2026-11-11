@@ -18,10 +18,10 @@ def sort_key(event: Event) -> tuple[datetime, str]:
 
 def filter_future(events: Iterable[Event], now: datetime) -> tuple[list[Event], list[Event]]:
     """Split into (usable, rejected): events more than 24 h in the future are rejected."""
-    kept: list[Event] = []
-    rejected: list[Event] = []
-    for event in events:
-        (rejected if parse_ts(event.ts) - now > MAX_FUTURE else kept).append(event)
+    listed = list(events)
+    future = [parse_ts(event.ts) - now > MAX_FUTURE for event in listed]
+    kept = [event for event, late in zip(listed, future) if not late]
+    rejected = [event for event, late in zip(listed, future) if late]
     return kept, rejected
 
 

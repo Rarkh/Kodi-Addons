@@ -6,7 +6,7 @@ import json
 from datetime import datetime
 from typing import Any, Callable
 
-from .applier import applied_entry
+from .applier import applied_entry, is_applied
 from .backend import Backend, BackendError, optional_text
 from .events import (
     Event,
@@ -23,6 +23,7 @@ from .events import (
     parse_filename,
 )
 from .logger import DEBUG, INFO, WARNING
+from .mediaid import file_name_key, same_medium
 from .merge import filter_future, merge
 from .store import LocalState, StateStore
 
@@ -30,6 +31,11 @@ PROGRESS_INTERVAL_S = 60.0
 MAX_ATTEMPTS = 5
 COMPACT_THRESHOLD = 100
 CLOCK_TOLERANCE_S = 120.0
+# A file time further away than this is not a clock problem but a share that reports nonsense
+CLOCK_PLAUSIBLE_S = 366 * 24 * 3600.0
+MAX_OWN_PATHS = 300
+# The big part of the cache (all states) is written at most this often (the queue always at once)
+CACHE_INTERVAL_S = 60.0
 
 Log = Callable[..., None]
 
@@ -52,12 +58,28 @@ class SyncEngine:
         self.log = log
         self.local: LocalState = store.load()
         self.state: dict[str, Event] = {}
+        self._fp_ids: dict[str, set[str]] = {}
+        self._name_ids: dict[str, set[str]] = {}
         for data in self.local.state.values():
             try:
                 event = event_from_dict(data)
             except EventError:
                 continue
-            self.state[event.media_id] = event
+            self._store(event.media_id, event)
+        # media ids whose state still has to be written to Kodi's database
+        self.unapplied: set[str] = set(self.state)
+        self._rev = 1  # changes whenever the big part of the cache changes
+        self._saved_rev = 0
+        self._saved_at: float | None = None
+        # events not sent yet are the newest truth even if the big cache is older than the queue
+        for item in self.local.queue:
+            try:
+                queued = event_from_dict(item)
+            except EventError:
+                continue
+            self._apply([queued])
+            self.local.applied[queued.media_id] = applied_entry(queued)
+            self.unapplied.discard(queued.media_id)
         self.online = False
         self.clock_offset: float | None = None
         self._seq_checked = False
@@ -120,11 +142,12 @@ class SyncEngine:
         self.local.applied[event.media_id] = applied_entry(event)
         if self.local.processed.get(self.device, 0) == event.seq - 1:
             self.local.processed[self.device] = event.seq
+        self._rev += 1
         return event
 
     def _flush_pending(self) -> None:
         """Progress saved locally only (e.g. before a crash) becomes real events."""
-        for fields in list(self.local.pending.values()):
+        for fields in self.local.pending.values():
             event = self._enqueue(fields)
             self._apply([event])
         self.local.pending.clear()
@@ -182,6 +205,7 @@ class SyncEngine:
             except (EventError, BackendError) as exc:
                 count = self.local.attempts.get(name, 0) + 1
                 self.local.attempts[name] = count
+                self._rev += 1
                 if count < MAX_ATTEMPTS:
                     self.log(f"{name} unreadable (attempt {count}): {exc}", DEBUG)
                     break
@@ -189,6 +213,7 @@ class SyncEngine:
                 self.log(f"{name} marked as defective: {exc}", WARNING)
             self.local.processed[device] = seq
             self.local.attempts.pop(name, None)
+            self._rev += 1
         return found
 
     def _pull_snapshots(self) -> list[Event]:
@@ -209,6 +234,7 @@ class SyncEngine:
             if snapshot.upto_seq > self.local.processed.get(device, 0):
                 found.extend(snapshot.items)
                 self.local.processed[device] = snapshot.upto_seq
+                self._rev += 1
         return found
 
     def _pull(self) -> list[Event]:
@@ -226,13 +252,60 @@ class SyncEngine:
             self.log(f"Ignored event from the future: {event.device} {event.ts}", WARNING)
         return self._apply(usable)
 
+    def _store(self, key: str, event: Event) -> None:
+        """Put an entry into the state and keep the lookup indexes in step."""
+        old = self.state.get(key)
+        if old:
+            if old.fp:
+                self._fp_ids.get(old.fp, set()).discard(key)
+            self._name_ids.get(file_name_key(key), set()).discard(key)
+        self.state[key] = event
+        self.local.state[key] = event.to_dict()
+        if event.fp:
+            self._fp_ids.setdefault(event.fp, set()).add(key)
+        self._name_ids.setdefault(file_name_key(key), set()).add(key)
+
+    def _related(self, events: list[Event]) -> list[Event]:
+        """The state entries that belong to the same media as the events (by id or fingerprint,
+        followed until nothing new is found)."""
+        related: dict[str, Event] = {}
+        todo = [(event.media_id, event.fp) for event in events]
+        while todo:
+            media_id, fp = todo.pop()
+            keys = [media_id] if media_id in self.state else []
+            keys.extend(self._fp_ids.get(fp, ()) if fp else ())
+            for key in keys:
+                if key not in related:
+                    related[key] = self.state[key]
+                    todo.append((key, self.state[key].fp))
+        return list(related.values())
+
     def _apply(self, events: list[Event]) -> list[Event]:
-        """Merge events into the state; return the entries that changed."""
-        merged = merge([*self.state.values(), *events])
+        """Merge events into the state; return the entries that changed.
+
+        Only the media the events belong to are merged again, not the whole state."""
+        if not events:
+            return []
+        merged = merge([*self._related(events), *events])
         changed = [event for key, event in merged.items() if self.state.get(key) != event]
-        self.state = merged
-        self.local.state = {key: event.to_dict() for key, event in merged.items()}
+        for event in changed:
+            self._store(event.media_id, event)
+            self.unapplied.add(event.media_id)
+        if changed:
+            self._rev += 1
         return changed
+
+    def unapplied_events(self) -> list[Event]:
+        """The entries not yet written to Kodi's database (new, changed or waiting)."""
+        return [self.state[key] for key in self.unapplied if key in self.state]
+
+    def applied_done(self, events: list[Event]) -> None:
+        """Forget the entries Kodi has now; the others (a playing medium, a failed write) wait."""
+        applied = self.local.applied
+        for event in events:
+            if is_applied(event, applied):
+                self.unapplied.discard(event.media_id)
+        self._rev += 1
 
     # ---- compaction -----------------------------------------------------------------------
 
@@ -290,6 +363,11 @@ class SyncEngine:
         except BackendError:
             return None
         offset = stamp - self.clock().timestamp()
+        if abs(offset) > CLOCK_PLAUSIBLE_S:
+            self.log(
+                f"The NAS reports an unusable file time ({stamp:.0f}): clock check skipped", INFO
+            )
+            return None
         self.clock_offset = offset
         if abs(offset) > CLOCK_TOLERANCE_S:
             self.log(f"Clock differs from the NAS by {offset:.0f} s: check the time", WARNING)
@@ -322,7 +400,7 @@ class SyncEngine:
         """Send everything that is still local (used when Kodi shuts down)."""
         self._flush_pending()
         self._flush()
-        self.save()
+        self.save(force=True)
 
     def rebuild(self) -> list[Event]:
         """Forget what was read; read all snapshots and events again (queue is kept)."""
@@ -332,15 +410,33 @@ class SyncEngine:
         self.local.state.clear()
         self.local.applied.clear()
         self.state = {}
+        self._fp_ids.clear()
+        self._name_ids.clear()
+        self.unapplied.clear()
+        self._rev += 1
         self._snapshot_seen = {}
         return self.sync()
 
     def lookup(self, media_id: str, fp: str | None) -> Event | None:
-        """Effective state of a medium: by id, otherwise by fingerprint."""
+        """Effective state of a medium: by id, by fingerprint, otherwise by the same file name
+        and folders under another path (another device may reach the file another way)."""
         event = self.state.get(media_id)
-        if event or not fp:
+        if event:
             return event
-        return next((e for e in self.state.values() if e.fp == fp), None)
+        if fp and self._fp_ids.get(fp):
+            return self.state[min(self._fp_ids[fp])]
+        for key in sorted(self._name_ids.get(file_name_key(media_id), ())):
+            if same_medium(key, media_id):
+                return self.state[key]
+        return None
+
+    def remember_path(self, path: str) -> None:
+        """Keep the path of a file played here (the newest MAX_OWN_PATHS)."""
+        paths = self.local.own_paths
+        if path in paths:
+            return
+        paths.append(path)
+        del paths[:-MAX_OWN_PATHS]
 
     def status(self) -> dict[str, Any]:
         return {
@@ -354,8 +450,17 @@ class SyncEngine:
             "clock_offset_s": self.clock_offset,
         }
 
-    def save(self) -> None:
+    def save(self, force: bool = False) -> None:
+        """Write the cache: the small part (queue, counters) always, the big part (all states)
+        only if it changed and at most every CACHE_INTERVAL_S seconds (or when forced)."""
+        now = self.mono()
+        changed = self._rev != self._saved_rev
+        due = self._saved_at is None or now - self._saved_at >= CACHE_INTERVAL_S
+        big = changed and (force or due)
         try:
-            self.store.save(self.local)
+            self.store.save(self.local, big)
         except BackendError as exc:
             self.log(f"Local cache not written: {exc}", WARNING)
+            return
+        if big:
+            self._saved_rev, self._saved_at = self._rev, now

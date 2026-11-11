@@ -14,10 +14,12 @@ from .config import SETTING_MAPPINGS, load_config
 from .logger import LOG_FILE
 from .mediaid import ARROW, Mapping, format_mappings, parse_mappings
 from .runtime import NOTIFY_REBUILD, NOTIFY_SYNC, PROFILE, STATUS_FILE
+from .update import newest_offer, version_key
 
 ADDON = xbmcaddon.Addon()
 HEADING = ADDON.getAddonInfo("name")
 FOLDER_DIALOG = 0
+REFRESH_REPOS = "UpdateAddonRepos"
 
 
 def tr(string_id: int, *args: Any) -> str:
@@ -38,6 +40,23 @@ def rebuild_cache() -> None:
     if xbmcgui.Dialog().yesno(HEADING, tr(30052)):
         xbmc.executebuiltin(NOTIFY_REBUILD)
         xbmcgui.Dialog().notification(HEADING, tr(30051))
+
+
+def check_updates() -> None:
+    """Show installed and offered version and make Kodi refresh its repositories.
+
+    Installing stays with Kodi (automatic updates, a Kodi restart, or Update in the add-on
+    information); the dialog says whether a newer version is there at all."""
+    xbmc.executebuiltin(REFRESH_REPOS)
+    installed = ADDON.getAddonInfo("version")
+    offered, error = newest_offer(ADDON.getAddonInfo("id"))
+    if offered is None:
+        state = tr(30081, error or "-")
+    elif version_key(offered) > version_key(installed):
+        state = tr(30079)
+    else:
+        state = tr(30078)
+    xbmcgui.Dialog().ok(HEADING, tr(30076, installed, offered or "-", state))
 
 
 def show_status() -> None:
@@ -85,6 +104,71 @@ def test_connection() -> None:
         xbmcgui.Dialog().ok(HEADING, tr(30054, exc))
         return
     xbmcgui.Dialog().ok(HEADING, tr(30053))
+
+
+# (file name, written as text): which kind of file the NAS accepts from this device
+DIAGNOSE_CASES = (
+    ("diag.txt", False),
+    ("diag.tmp", False),
+    (".diag.tmp", False),
+    ("diag-text.txt", True),
+)
+DIAGNOSE_FOLDERS = ("", "devices/")
+
+
+def _try_write(vfs: Any, path: str, as_text: bool) -> str:
+    """Write a small file the way the add-on does and say what Kodi answered."""
+    payload: Any = "watchsync" if as_text else bytearray(b"watchsync")
+    try:
+        handle = vfs.File(path, "w")
+        try:
+            written = handle.write(payload)
+        finally:
+            handle.close()
+        found = vfs.exists(path)
+        size = -1
+        if found:
+            reader = vfs.File(path)
+            size = reader.size()
+            reader.close()
+            vfs.delete(path)
+    except Exception as exc:  # noqa: BLE001  (any error is the answer here)
+        return f"error: {exc}"
+    return f"write={written} exists={found} size={size}"
+
+
+def _try_rename(vfs: Any, folder_path: str) -> str:
+    source, target = folder_path + "diag-rename.tmp", folder_path + "diag-rename.txt"
+    try:
+        handle = vfs.File(source, "w")
+        handle.write(bytearray(b"watchsync"))
+        handle.close()
+        moved = vfs.rename(source, target)
+        vfs.delete(target)
+        vfs.delete(source)
+    except Exception as exc:  # noqa: BLE001
+        return f"error: {exc}"
+    return f"rename={moved}"
+
+
+def diagnose() -> None:
+    """Try several ways of writing to the storage location and show the answers."""
+    config = load_config(ADDON, xbmc.getInfoLabel("System.FriendlyName"))
+    if not config.storage_path:
+        xbmcgui.Dialog().ok(HEADING, tr(30055))
+        return
+    backend = VfsBackend(config.storage_path)
+    lines = [tr(30077, config.storage_path), ""]
+    for folder in DIAGNOSE_FOLDERS:
+        base = backend.root + folder
+        lines.append(f"{folder or '/'}: exists={backend.vfs.exists(base)}")
+        for name, as_text in DIAGNOSE_CASES:
+            kind = "text" if as_text else "bytes"
+            lines.append(f"  {name} ({kind}): {_try_write(backend.vfs, base + name, as_text)}")
+        lines.append(f"  rename: {_try_rename(backend.vfs, base)}")
+    text = "\n".join(lines)
+    xbmc.log(f"[WatchSync] diagnosis\n{text}", xbmc.LOGINFO)
+    xbmcgui.Dialog().textviewer(HEADING, text)
 
 
 def ask_mapping(current: Mapping | None) -> Mapping | None:
@@ -140,6 +224,8 @@ ACTIONS = {
     "log": (30044, show_log),
     "rebuild": (30045, rebuild_cache),
     "test": (30046, test_connection),
+    "update": (30047, check_updates),
+    "diagnose": (30048, diagnose),
 }
 
 

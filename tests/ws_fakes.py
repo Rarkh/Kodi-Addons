@@ -32,7 +32,7 @@ class FakeFile:
         return bytearray(data)
 
     def write(self, data: Any) -> bool:
-        if self.vfs.fail_write:
+        if self.vfs.fail_write or self.path.startswith(tuple(self.vfs.readonly)):
             return False
         self.buffer += bytes(data)
         return True
@@ -63,6 +63,7 @@ class FakeVfs:
         self.default_mtime = 0.0
         self.down = False
         self.fail_write = False
+        self.readonly: set[str] = set()  # folders this device may not write to
         self.fail_rename = False
         self.fail_delete = False
 

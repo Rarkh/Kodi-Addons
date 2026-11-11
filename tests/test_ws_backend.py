@@ -28,8 +28,9 @@ def test_ensure_layout_creates_folders(vfs):
 
 def test_ensure_layout_fails_when_nas_is_down(vfs):
     vfs.down = True
+    backend = make_backend(vfs)
     with pytest.raises(BackendError):
-        make_backend(vfs).ensure_layout()
+        backend.ensure_layout()
 
 
 def test_root_without_trailing_slash_is_normalised(vfs):
@@ -86,10 +87,38 @@ def test_write_failures(vfs, monkeypatch):
     with pytest.raises(BackendError):
         backend.write_text("events", "a_000001.json", "x")
     vfs.fail_rename = False
-    monkeypatch.setattr(backend, "_same_content", lambda path, data: False)
-    with pytest.raises(BackendError):
+    monkeypatch.setattr(backend, "_read_bytes", lambda path: b"")
+    with pytest.raises(BackendError, match="read back 0 of 1 bytes"):
         backend.write_text("events", "a_000001.json", "x")
     assert backend.list_files("events") == []
+
+
+def test_write_failure_names_the_reason(vfs):
+    backend = make_backend(vfs)
+    backend.ensure_layout()
+    vfs.fail_write = True
+    with pytest.raises(BackendError, match="write was refused"):
+        backend.write_text("events", "a_000001.json", "x")
+
+
+def test_read_back_waits_for_stale_nfs_attributes(vfs, monkeypatch):
+    """The first reads right after the write return nothing; the file is fine a moment later."""
+    pauses: list[float] = []
+    backend = VfsBackend("nfs://nas/WatchSync/", vfs=vfs, sleep=pauses.append)
+    backend.ensure_layout()
+    real = backend._read_bytes
+    calls = {"n": 0}
+
+    def stale_then_real(path: str) -> bytes:
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise BackendError("stale")
+        return real(path)
+
+    monkeypatch.setattr(backend, "_read_bytes", stale_then_real)
+    backend.write_text("events", "a_000001.json", "x")
+    assert backend.read_text("events", "a_000001.json") == "x"
+    assert pauses == [0.25, 0.25]
 
 
 def test_read_errors(vfs):
@@ -126,6 +155,15 @@ def test_probe(vfs, monkeypatch):
     assert backend.list_files("") == []
     monkeypatch.setattr(backend, "read_text", lambda folder, name: "other")
     with pytest.raises(BackendError):
+        backend.probe("dev")
+
+
+def test_probe_checks_every_folder(vfs):
+    """The root may be writable while a folder created by another device is not."""
+    backend = make_backend(vfs)
+    backend.ensure_layout()
+    vfs.readonly.add("nfs://nas/WatchSync/devices/")
+    with pytest.raises(BackendError, match="devices/.*write permission"):
         backend.probe("dev")
 
 
@@ -221,7 +259,6 @@ class FakeAddon:
             "sync_interval": 1,
             "save_interval": 20,
             "watched_threshold": 150,
-            "resume_mode": 1,
             "cache_enabled": True,
             "log_level": 1,
         }
@@ -252,9 +289,46 @@ def test_device_id_is_derived_once_and_stored():
 def test_load_config_clamps_values():
     config = load_config(FakeAddon(), "Kodi")
     assert config.storage_path == "nfs://nas/W"
-    assert config.sync_interval == 5 and config.save_interval == 20
+    assert config.sync_interval == 5
+    assert config.save_interval == 20
     assert config.threshold == 1.0
-    assert config.debug and config.resume_mode == 1
+    assert config.debug
     assert config.mappings[0].raw == "R:\\"
     low = load_config(FakeAddon(watched_threshold=0, log_level=0), "Kodi")
-    assert low.threshold == 0.01 and not low.debug
+    assert low.threshold == 0.01
+    assert not low.debug
+
+
+def test_existing_target_that_cannot_be_read_counts_as_different(vfs, monkeypatch):
+    backend = make_backend(vfs)
+    backend.ensure_layout()
+    backend.write_text("events", "a_000001.json", "old")
+    real = backend._read_bytes
+
+    def unreadable_target(path: str) -> bytes:
+        if path.endswith("a_000001.json"):
+            raise BackendError("gone")
+        return real(path)
+
+    monkeypatch.setattr(backend, "_read_bytes", unreadable_target)
+    with pytest.raises(BackendError, match="already exists"):
+        backend.write_text("events", "a_000001.json", "new")
+
+
+def test_read_does_not_trust_the_reported_size(vfs, monkeypatch):
+    """A share that reports size 0 must not make a file look empty."""
+    backend = make_backend(vfs)
+    backend.ensure_layout()
+    backend.write_text("events", "a_000001.json", "hello" * 20000)  # more than one chunk
+    monkeypatch.setattr(type(vfs.File("x")), "size", lambda self: 0)
+    assert backend.read_text("events", "a_000001.json") == "hello" * 20000
+
+
+def test_read_waits_for_a_file_that_looks_empty(vfs):
+    pauses: list[float] = []
+    backend = VfsBackend("nfs://nas/WatchSync/", vfs=vfs, sleep=pauses.append)
+    backend.ensure_layout()
+    path = "nfs://nas/WatchSync/events/a_000001.json"
+    vfs.files[path] = b""
+    assert backend.read_text("events", "a_000001.json") == ""
+    assert pauses == [0.25, 0.25, 0.25]

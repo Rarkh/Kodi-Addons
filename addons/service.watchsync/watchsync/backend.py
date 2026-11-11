@@ -7,11 +7,17 @@ read back, then renamed to their final name.
 from __future__ import annotations
 
 import posixpath
-from typing import Any, Iterable
+import time
+from typing import Any, Callable, Iterable
 
 import xbmcvfs
 
 LAYOUT = ("events", "devices", "snapshots")
+# NFS clients can report a stale size right after a write: read back a few times
+READBACK_TRIES = 4
+READBACK_WAIT_S = 0.25
+# Read in chunks until the end: the size a share reports can be wrong (seen on Android NFS)
+READ_CHUNK = 64 * 1024
 
 
 class BackendError(Exception):
@@ -20,6 +26,8 @@ class BackendError(Exception):
 
 class Backend:
     """What the sync engine needs from a storage. Replace for e.g. an HTTP backend."""
+
+    folders: tuple[str, ...] = ()
 
     def ensure_layout(self) -> None:
         raise NotImplementedError
@@ -40,19 +48,30 @@ class Backend:
         raise NotImplementedError
 
     def probe(self, label: str) -> None:
-        """Write, read back and delete a test file; raise BackendError if that fails."""
+        """Write, read back and delete a test file in the storage root and in every folder.
+
+        Raise BackendError if that fails. A folder another device created can be read-only for
+        this device, so the root alone proves nothing."""
         name = f".probe-{label}.txt"
-        self.write_text("", name, "watchsync", overwrite=True)
-        if self.read_text("", name) != "watchsync":
-            raise BackendError("probe file differs")
-        self.delete("", name)
+        for folder in ("", *self.folders):
+            self.write_text(folder, name, "watchsync", overwrite=True)
+            if self.read_text(folder, name) != "watchsync":
+                raise BackendError(f"probe file in {folder or 'the root'} differs")
+            self.delete(folder, name)
 
 
 class VfsBackend(Backend):
-    def __init__(self, root: str, folders: Iterable[str] = LAYOUT, vfs: Any = xbmcvfs) -> None:
+    def __init__(
+        self,
+        root: str,
+        folders: Iterable[str] = LAYOUT,
+        vfs: Any = xbmcvfs,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> None:
         self.root = root if root.endswith(("/", "\\")) else root + "/"
         self.folders = tuple(folders)
         self.vfs = vfs
+        self.sleep = sleep
 
     def _dir(self, folder: str) -> str:
         return self.root + (folder + "/" if folder else "")
@@ -77,13 +96,25 @@ class VfsBackend(Backend):
             raise BackendError(f"{path} does not exist")
         file = self.vfs.File(path)
         try:
-            return bytes(file.readBytes(file.size()))
+            parts = []
+            while True:
+                chunk = bytes(file.readBytes(READ_CHUNK))
+                if not chunk:
+                    return b"".join(parts)
+                parts.append(chunk)
         finally:
             file.close()
 
     def read_text(self, folder: str, name: str) -> str:
+        path = self._path(folder, name)
         try:
-            return self._read_bytes(self._path(folder, name)).decode("utf-8")
+            data = self._read_bytes(path)
+            for _ in range(READBACK_TRIES - 1):
+                if data:
+                    break
+                self.sleep(READBACK_WAIT_S)  # a file that looks empty may just not be visible yet
+                data = self._read_bytes(path)
+            return data.decode("utf-8")
         except UnicodeDecodeError as exc:
             raise BackendError(f"{name}: not UTF-8") from exc
 
@@ -92,6 +123,20 @@ class VfsBackend(Backend):
             return self._read_bytes(path) == data
         except BackendError:
             return False
+
+    def _read_back(self, path: str, data: bytes) -> bytes:
+        """What a read of the file returns; retried while it differs (stale NFS attributes)."""
+        back = b""
+        for attempt in range(READBACK_TRIES):
+            if attempt:
+                self.sleep(READBACK_WAIT_S)
+            try:
+                back = self._read_bytes(path)
+            except BackendError:
+                back = b""
+            if back == data:
+                break
+        return back
 
     def write_text(self, folder: str, name: str, text: str, overwrite: bool = False) -> None:
         data = text.encode("utf-8")
@@ -104,9 +149,16 @@ class VfsBackend(Backend):
             written = file.write(bytearray(data))
         finally:
             file.close()
-        if not written or not self._same_content(tmp, data):
+        if not written:
             self.vfs.delete(tmp)
-            raise BackendError(f"cannot write {tmp}")
+            raise BackendError(
+                f"cannot write {tmp}: the write was refused "
+                "(does this device have write permission for the folder on the NAS?)"
+            )
+        back = self._read_back(tmp, data)
+        if back != data:
+            self.vfs.delete(tmp)
+            raise BackendError(f"cannot write {tmp}: read back {len(back)} of {len(data)} bytes")
         if self.vfs.exists(target):
             if not overwrite:
                 same = self._same_content(target, data)

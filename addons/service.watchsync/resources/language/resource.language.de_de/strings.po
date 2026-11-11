@@ -31,18 +31,6 @@ msgctxt "#30006"
 msgid "Als gesehen markieren ab (%)"
 msgstr "Als gesehen markieren ab (%)"
 
-msgctxt "#30007"
-msgid "Wiedergabe auf anderem Gerät gestartet"
-msgstr "Wiedergabe auf anderem Gerät gestartet"
-
-msgctxt "#30008"
-msgid "Automatisch zur gespeicherten Position springen"
-msgstr "Automatisch zur gespeicherten Position springen"
-
-msgctxt "#30009"
-msgid "Vorher fragen"
-msgstr "Vorher fragen"
-
 msgctxt "#30010"
 msgid "Lokalen Cache verwenden"
 msgstr "Lokalen Cache verwenden"
@@ -68,8 +56,8 @@ msgid "Erweitert"
 msgstr "Erweitert"
 
 msgctxt "#30022"
-msgid "Pfad-Mappings (Präfix oder Präfix=>Basis, getrennt durch |)"
-msgstr "Pfad-Mappings (Präfix oder Präfix=>Basis, getrennt durch |)"
+msgid "Pfad-Mappings, optional (Präfix oder Präfix=>Basis, getrennt durch |)"
+msgstr "Pfad-Mappings, optional (Präfix oder Präfix=>Basis, getrennt durch |)"
 
 msgctxt "#30030"
 msgid "NAS-Verbindung testen"
@@ -106,6 +94,14 @@ msgstr "Cache neu aufbauen"
 msgctxt "#30046"
 msgid "NAS-Verbindung testen"
 msgstr "NAS-Verbindung testen"
+
+msgctxt "#30047"
+msgid "Nach Updates suchen"
+msgstr "Nach Updates suchen"
+
+msgctxt "#30048"
+msgid "Schreibtest (Diagnose)"
+msgstr "Schreibtest (Diagnose)"
 
 msgctxt "#30050"
 msgid "Synchronisation angefordert"
@@ -163,10 +159,6 @@ msgctxt "#30066"
 msgid "NAS-relative Basis (optional, meist leer)"
 msgstr "NAS-relative Basis (optional, meist leer)"
 
-msgctxt "#30070"
-msgid "Bei {0} fortsetzen, wo auf einem anderen Gerät gestoppt wurde?"
-msgstr "Bei {0} fortsetzen, wo auf einem anderen Gerät gestoppt wurde?"
-
 msgctxt "#30072"
 msgid "Gerät: {0}\nNAS-Ordner: {1}\nVerbindung: {2}\nLetzte Synchronisation: {3}\nEreignisse zum Senden: {4}\nBekannte Medien: {5}\nMedien ohne Pfad-Mapping: {6}\nDefekte Dateien: {7}\nZeitabweichung zum NAS: {8}"
 msgstr "Gerät: {0}\nNAS-Ordner: {1}\nVerbindung: {2}\nLetzte Synchronisation: {3}\nEreignisse zum Senden: {4}\nBekannte Medien: {5}\nMedien ohne Pfad-Mapping: {6}\nDefekte Dateien: {7}\nZeitabweichung zum NAS: {8}"
@@ -182,3 +174,24 @@ msgstr "online"
 msgctxt "#30075"
 msgid "offline"
 msgstr "offline"
+
+
+msgctxt "#30077"
+msgid "Schreibtest in {0}"
+msgstr "Schreibtest in {0}"
+
+msgctxt "#30076"
+msgid "Installiert: {0}\nIm Repository: {1}\n\n{2}"
+msgstr "Installiert: {0}\nIm Repository: {1}\n\n{2}"
+
+msgctxt "#30078"
+msgid "Du hast die neueste Version."
+msgstr "Du hast die neueste Version."
+
+msgctxt "#30079"
+msgid "Eine neuere Version ist verfügbar. Kodi installiert sie selbst, wenn automatische Updates eingeschaltet sind; sonst öffne die Add-on-Information und wähle Aktualisieren, oder starte Kodi neu."
+msgstr "Eine neuere Version ist verfügbar. Kodi installiert sie selbst, wenn automatische Updates eingeschaltet sind; sonst öffne die Add-on-Information und wähle Aktualisieren, oder starte Kodi neu."
+
+msgctxt "#30081"
+msgid "Das Repository konnte nicht gelesen werden: {0}"
+msgstr "Das Repository konnte nicht gelesen werden: {0}"

@@ -10,10 +10,9 @@ from typing import Any, Callable
 
 import xbmc
 import xbmcaddon
-import xbmcgui
 import xbmcvfs
 
-from .applier import KodiApplier, ManualChanges, Rpc, make_rpc
+from .applier import FilePoller, KodiApplier, ManualChanges, Rpc, make_rpc
 from .backend import Backend, BackendError, VfsBackend
 from .config import Config, load_config
 from .engine import SyncEngine
@@ -29,9 +28,9 @@ STEP_S = 1.0
 METHOD_SYNC = "Other.SyncNow"
 METHOD_REBUILD = "Other.Rebuild"
 METHOD_UPDATE = "VideoLibrary.OnUpdate"
+LOOKS_AFTER_MARK = 2  # looks at the shown folder after a mark (the database may lag a second)
 NOTIFY_SYNC = f"NotifyAll({ADDON_ID},SyncNow)"
 NOTIFY_REBUILD = f"NotifyAll({ADDON_ID},Rebuild)"
-STRING_RESUME = 30070
 
 
 class ServiceMonitor(xbmc.Monitor):
@@ -69,8 +68,10 @@ class Env:
     mono: Callable[[], float]
     rpc: Rpc
     friendly_name: Callable[[], str]
+    folder: Callable[[], str]
+    menu_open: Callable[[], bool]
+    selected: Callable[[], tuple[str, bool]]
     opener: Callable[[str], Any]
-    ask_resume: Callable[[float], bool]
     make_backend: Callable[[str], Backend]
 
 
@@ -84,6 +85,11 @@ class Service:
         self.engine: SyncEngine | None = None
         self.applier: KodiApplier | None = None
         self.manual: ManualChanges | None = None
+        self.poller: FilePoller | None = None
+        self._menu_was_open = False
+        self._selected: tuple[str, bool] = ("", False)  # the item before a menu opened
+        self._marked_folder = ""  # a folder a context menu may just have marked
+        self._looks = 0  # looks at the shown folder still to do after a context menu closed
         self.next_sync = 0.0
         self.next_save = 0.0
 
@@ -91,7 +97,7 @@ class Service:
         env = self.env
         config = self.config = load_config(env.addon, env.friendly_name())
         self.log.debug = config.debug
-        self.engine = self.applier = self.manual = self.player.tracker = None
+        self.engine = self.applier = self.manual = self.poller = self.player.tracker = None
         if not config.enabled:
             self.log("Synchronisation is switched off in the settings")
             return
@@ -109,14 +115,12 @@ class Service:
         self.engine = engine
         self.applier = KodiApplier(env.rpc, config.mappings, env.mono, self.log)
         self.manual = ManualChanges(env.rpc, config.mappings, engine, self.applier, self.log)
+        self.poller = FilePoller(env.rpc, config.mappings, self.manual, self.applier)
         self.player.tracker = Tracker(
             engine,
             config.mappings,
             Fingerprinter(env.opener),
             config.threshold,
-            config.resume_mode,
-            self.player.seekTime,
-            env.ask_resume,
             self.log,
         )
         self.next_sync = self.next_save = env.mono()
@@ -133,7 +137,13 @@ class Service:
         # so Kodi's own "resume" works. The medium playing right now waits until it stopped.
         tracker = self.player.tracker
         playing = tracker.current.media_id if tracker and tracker.current else None
-        self.applier.apply(engine.state.values(), engine.local.applied, playing)
+        events = engine.unapplied_events()
+        self.applier.apply(
+            events, engine.local.applied, playing, engine.local.own_paths, list(engine.state)
+        )
+        engine.applied_done(events)
+        if self.poller and not playing:
+            self.poller.check(self.env.folder())
         engine.save()
         self._write_status(engine, config)
         self.log.flush()
@@ -158,6 +168,7 @@ class Service:
             return
         while monitor.updates:
             self.manual.handle(monitor.updates.pop(0))
+            self._looks = LOOKS_AFTER_MARK  # Kodi announced a change: look at the shown folder
         now = self.env.mono()
         if monitor.rebuild:
             monitor.rebuild = False
@@ -168,6 +179,32 @@ class Service:
         if now >= self.next_save:
             self.player.poll()
             self.next_save = now + self.config.save_interval
+        self._watch_marks()
+
+    def _watch_marks(self) -> None:
+        """Marks set by hand in a file list. The trigger is the marking itself: Kodi announces a
+        change (VideoLibrary.OnUpdate) or a context menu just closed (it may have set a mark).
+        The shown folder is then compared with the baseline at once and once more a second later."""
+        tracker = self.player.tracker
+        if not self.poller or (tracker and tracker.current):
+            return
+        folder = self.env.folder()
+        self.poller.touch(folder)
+        open_now = self.env.menu_open()
+        if self._menu_was_open and not open_now:
+            self._looks = LOOKS_AFTER_MARK
+            path, is_folder = self._selected  # what was focused before the menu opened
+            self._marked_folder = path if is_folder else ""
+        if not open_now:
+            self._selected = self.env.selected()  # while the menu is open, ListItem is the menu's
+        self._menu_was_open = open_now
+        if self._looks:
+            self._looks -= 1
+            self.poller.check(folder)
+            if self._marked_folder:
+                self.poller.sync_tree(self._marked_folder)
+            if not self._looks:
+                self._marked_folder = ""
 
     def run(self) -> None:
         self.log("Service started")
@@ -186,12 +223,6 @@ class Service:
 def run_service() -> None:
     addon = xbmcaddon.Addon()
 
-    def ask_resume(position: float) -> bool:
-        text = addon.getLocalizedString(STRING_RESUME).format(
-            time.strftime("%H:%M:%S", time.gmtime(position))
-        )
-        return xbmcgui.Dialog().yesno(addon.getAddonInfo("name"), text)
-
     env = Env(
         addon=addon,
         local=VfsBackend(PROFILE, folders=()),
@@ -200,8 +231,13 @@ def run_service() -> None:
         mono=time.monotonic,
         rpc=make_rpc(xbmc.executeJSONRPC),
         friendly_name=lambda: xbmc.getInfoLabel("System.FriendlyName"),
+        folder=lambda: xbmc.getInfoLabel("Container.FolderPath"),
+        menu_open=lambda: xbmc.getCondVisibility("Window.IsActive(contextmenu)"),
+        selected=lambda: (
+            xbmc.getInfoLabel("ListItem.FileNameAndPath"),
+            xbmc.getCondVisibility("ListItem.IsFolder"),
+        ),
         opener=xbmcvfs.File,
-        ask_resume=ask_resume,
         make_backend=VfsBackend,
     )
     Service(env, ServiceMonitor(), PlayerMonitor()).run()

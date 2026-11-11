@@ -8,15 +8,17 @@ from typing import Any, Callable
 
 import xbmc
 
-from .applier import is_applied
 from .engine import SyncEngine
-from .events import Event
-from .logger import INFO, WARNING
+from .logger import DEBUG, WARNING
 from .mediaid import Fingerprinter, Mapping, is_trackable, to_media_id
 
-RESET_BELOW_S = 5.0
-RESUME_TOLERANCE_S = 5.0
-RESUME_AUTO, RESUME_ASK = 0, 1
+# Below this position no progress is written: a playback that starts at 0 (a quick look at a
+# file) must not overwrite the saved state of the medium with "0". Only a stop right at the
+# start of a medium that had a saved position clears it: a "reset" event.
+QUIET_START_S = 1.0
+# Stopping within this many seconds of the start clears a saved position (also after Kodi's
+# own resume put the playback at that position)
+QUICK_STOP_S = 1.0
 
 
 @dataclass
@@ -28,6 +30,9 @@ class Current:
     position: float
     playcount: int
     watched: bool = False
+    # a position was saved for this medium: stopping right away clears it
+    had_saved: bool = False
+    started_at: float = 0.0
 
 
 class Tracker:
@@ -37,58 +42,45 @@ class Tracker:
         mappings: list[Mapping],
         fingerprinter: Fingerprinter,
         threshold: float,
-        resume_mode: int,
-        seek: Callable[[float], None],
-        ask_resume: Callable[[float], bool],
         log: Callable[..., None],
     ) -> None:
         self.engine = engine
         self.mappings = mappings
         self.fingerprinter = fingerprinter
         self.threshold = threshold
-        self.resume_mode = resume_mode
-        self.seek = seek
-        self.ask_resume = ask_resume
         self.log = log
         self.current: Current | None = None
 
     def started(self, path: str, position: float, duration: float) -> None:
-        self.current = None
+        current, self.current = self.current, None
         if not is_trackable(path):
             return
         ref = to_media_id(path, self.mappings)
+        if current and current.media_id == ref.id and not current.watched:
+            # the early start notice came first (stopping before the audio/video stream is up
+            # still counts as a playback): only add what is known now
+            current.position, current.duration = position, duration
+            self.current = current
+            return
         fp = self.fingerprinter.get(path)
         previous = self.engine.lookup(ref.id, fp)
         cur = self.current = Current(
             ref.id, ref.unmapped, fp, duration, position, previous.playcount if previous else 0
         )
+        cur.started_at = self.engine.mono()
         if ref.unmapped:
-            self.log(f"No path mapping for {ref.id}: the full path is used as id", WARNING)
-        if previous:
-            self._maybe_resume(cur, previous)
-
-    def _maybe_resume(self, cur: Current, previous: Event) -> None:
-        """Fallback: jump to the position another device saved, if it is the newest state.
-
-        Normally Kodi's own resume handling already has it (applied to its database before the
-        playback). Only when that was not possible (no library entry, query failed) we seek.
-        """
-        if previous.device == self.engine.device or previous.type != "progress":
-            return
-        applied = self.engine.local.applied
-        if is_applied(previous, applied) and applied[previous.media_id]["ok"]:
-            return
-        if abs(previous.position_s - cur.position) <= RESUME_TOLERANCE_S:
-            return
-        if self.resume_mode == RESUME_AUTO or self.ask_resume(previous.position_s):
-            self.log(f"Resuming at {previous.position_s:.0f} s (saved on {previous.device})", INFO)
-            self.seek(previous.position_s)
-            cur.position = previous.position_s
+            self.engine.remember_path(path)
+            self.log(f"No path mapping for {ref.id}: matched by file name and folders", DEBUG)
+        # Resuming is Kodi's own business: the saved position is in its database (applied by the
+        # service), so Kodi asks where to continue. This add-on never jumps and never asks.
+        cur.had_saved = bool(previous and previous.type == "progress")
 
     def _ratio(self, cur: Current) -> float:
         return cur.position / cur.duration if cur.duration > 0 else 0.0
 
     def _record(self, cur: Current, kind: str, force: bool) -> None:
+        if kind == "progress" and cur.position < QUIET_START_S:
+            return
         position = 0.0 if kind in ("watched", "reset") else cur.position
         self.engine.record(
             cur.media_id,
@@ -130,10 +122,16 @@ class Tracker:
             return
         if self._ratio(cur) >= self.threshold:
             self._mark_watched(cur)
-        elif cur.position < RESET_BELOW_S:
+        elif cur.had_saved and self._quick_stop(cur):
             self._record(cur, "reset", True)
+        elif cur.position < QUIET_START_S:
+            pass  # a quick look: the saved state stays
         else:
             self._record(cur, "progress", True)
+
+    def _quick_stop(self, cur: Current) -> bool:
+        """Stopped right at the start (position, or time since the start even after a jump)."""
+        return cur.position < QUIET_START_S or self.engine.mono() - cur.started_at < QUICK_STOP_S
 
     def ended(self) -> None:
         cur, self.current = self.current, None

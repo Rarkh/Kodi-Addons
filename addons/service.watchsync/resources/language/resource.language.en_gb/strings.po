@@ -31,18 +31,6 @@ msgctxt "#30006"
 msgid "Mark as watched from (%)"
 msgstr "Mark as watched from (%)"
 
-msgctxt "#30007"
-msgid "Playback started elsewhere"
-msgstr "Playback started elsewhere"
-
-msgctxt "#30008"
-msgid "Jump to the saved position automatically"
-msgstr "Jump to the saved position automatically"
-
-msgctxt "#30009"
-msgid "Ask first"
-msgstr "Ask first"
-
 msgctxt "#30010"
 msgid "Use local cache"
 msgstr "Use local cache"
@@ -68,8 +56,8 @@ msgid "Advanced"
 msgstr "Advanced"
 
 msgctxt "#30022"
-msgid "Path mappings (prefix or prefix=>base, separated by |)"
-msgstr "Path mappings (prefix or prefix=>base, separated by |)"
+msgid "Path mappings, optional (prefix or prefix=>base, separated by |)"
+msgstr "Path mappings, optional (prefix or prefix=>base, separated by |)"
 
 msgctxt "#30030"
 msgid "Test NAS connection"
@@ -106,6 +94,14 @@ msgstr "Rebuild cache"
 msgctxt "#30046"
 msgid "Test NAS connection"
 msgstr "Test NAS connection"
+
+msgctxt "#30047"
+msgid "Check for updates"
+msgstr "Check for updates"
+
+msgctxt "#30048"
+msgid "Write test (diagnosis)"
+msgstr "Write test (diagnosis)"
 
 msgctxt "#30050"
 msgid "Synchronisation requested"
@@ -163,10 +159,6 @@ msgctxt "#30066"
 msgid "NAS-relative base (optional, usually empty)"
 msgstr "NAS-relative base (optional, usually empty)"
 
-msgctxt "#30070"
-msgid "Continue at {0} where it was stopped on another device?"
-msgstr "Continue at {0} where it was stopped on another device?"
-
 msgctxt "#30072"
 msgid "Device: {0}\nNAS folder: {1}\nConnection: {2}\nLast synchronisation: {3}\nEvents waiting to be sent: {4}\nKnown media: {5}\nMedia without path mapping: {6}\nDefective files: {7}\nClock difference to the NAS: {8}"
 msgstr "Device: {0}\nNAS folder: {1}\nConnection: {2}\nLast synchronisation: {3}\nEvents waiting to be sent: {4}\nKnown media: {5}\nMedia without path mapping: {6}\nDefective files: {7}\nClock difference to the NAS: {8}"
@@ -182,3 +174,24 @@ msgstr "online"
 msgctxt "#30075"
 msgid "offline"
 msgstr "offline"
+
+
+msgctxt "#30077"
+msgid "Write test in {0}"
+msgstr "Write test in {0}"
+
+msgctxt "#30076"
+msgid "Installed: {0}\nOffered by the repository: {1}\n\n{2}"
+msgstr "Installed: {0}\nOffered by the repository: {1}\n\n{2}"
+
+msgctxt "#30078"
+msgid "You have the newest version."
+msgstr "You have the newest version."
+
+msgctxt "#30079"
+msgid "A newer version is available. Kodi installs it by itself when automatic updates are on; otherwise open the add-on information and choose Update, or restart Kodi."
+msgstr "A newer version is available. Kodi installs it by itself when automatic updates are on; otherwise open the add-on information and choose Update, or restart Kodi."
+
+msgctxt "#30081"
+msgid "The repository could not be read: {0}"
+msgstr "The repository could not be read: {0}"

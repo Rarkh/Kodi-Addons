@@ -9,6 +9,12 @@ import pytest
 from test_ws_engine import Rig, record
 from watchsync.applier import (
     ECHO_WINDOW_S,
+    LIBRARY_INDEX_TTL_S,
+    MAX_KNOWN_FILES,
+    MAX_TREE_DEPTH,
+    MAX_TREE_LISTINGS,
+    SETTLE_STEPS,
+    FilePoller,
     KodiApplier,
     ManualChanges,
     RpcError,
@@ -90,6 +96,7 @@ class FakeKodi:
         self.musicvideos: list[dict] = []
         self.fail: set[str] = set()
         self.details = {"VideoLibrary.GetMovieDetails": {"moviedetails": {"file": MOVIE_PATH}}}
+        self.directories: dict[str, list[dict]] = {}  # folder -> items of Files.GetDirectory
 
     def __call__(self, method: str, params: dict) -> dict:
         self.calls.append((method, params))
@@ -101,10 +108,14 @@ class FakeKodi:
             return {"episodes": self.episodes}
         if method == "VideoLibrary.GetMusicVideos":
             return {"musicvideos": self.musicvideos}
+        if method == "Files.GetDirectory":
+            if params["directory"] not in self.directories:
+                raise RpcError("unknown folder")
+            return {"files": self.directories[params["directory"]]}
         return self.details.get(method, {})
 
     def sets(self) -> list[tuple[str, dict]]:
-        return [c for c in self.calls if ".Set" in c[0] or c[0].startswith("Files.")]
+        return [c for c in self.calls if ".Set" in c[0]]
 
 
 MOVIE_PATH = "nfs://nas/Media/Filme/A.mkv"
@@ -137,7 +148,27 @@ def test_library_item_gets_playcount_and_resume(kodi, clock):
             {"movieid": 1, "playcount": 0, "resume": {"position": 600.0, "total": 7000.0}},
         )
     ]
-    assert applied["Filme/A.mkv"]["ts"] == event.ts and applied["Filme/A.mkv"]["ok"]
+    assert applied["Filme/A.mkv"]["ts"] == event.ts
+    assert applied["Filme/A.mkv"]["ok"]
+
+
+def test_item_is_found_without_mappings_when_another_device_uses_another_path(kodi, clock):
+    """The tablet plays over SMB with other letter case; this device has the library over NFS."""
+    kodi.movies = [
+        {"movieid": 5, "file": "nfs://192.168.0.5/RAID5/SERIES/Show/Season 01/Pilot.S01E01.mkv"}
+    ]
+    kodi.movies.append(
+        {"movieid": 6, "file": "nfs://192.168.0.5/RAID5/SERIES/Show/Season 01/Other.mkv"}
+    )
+    applier = KodiApplier(kodi, [], lambda: clock[0], lambda msg, level=1: None)
+    foreign = "smb://nas/RAID5/series/show/season 01/pilot.s01e01.mkv"
+    applied: dict = {}
+    assert applier.apply([ev(media=foreign, position_s=60.0)], applied) == 1
+    assert kodi.sets()[0][1]["movieid"] == 5
+    stranger = ev(media="smb://nas/RAID5/SERIES/Other Show/Season 01/Pilot.S01E01.mkv")
+    kodi.calls.clear()
+    assert applier.apply([stranger], applied) == 0
+    assert kodi.sets() == []
 
 
 def test_only_entries_newer_than_the_applied_state_are_written(kodi, clock):
@@ -175,15 +206,85 @@ def test_echo_suppression_window(kodi, clock):
     assert not applier.is_echo("movie", 1, 1)
 
 
-def test_files_outside_the_library_use_set_file_details(kodi, clock):
+def test_files_outside_the_library_use_set_file_details_for_mapped_paths(kodi, clock):
     applier, _ = make_applier(kodi, clock)
     applied: dict = {}
     mapped = ev(media="Other/B.mkv", position_s=10.0)
-    unmapped = ev(media="smb://x/y/C.mkv", unmapped=True, kind="watched", playcount=1)
-    assert applier.apply([mapped, unmapped], applied) == 2
+    assert applier.apply([mapped], applied) == 1
+    assert [c[1]["file"] for c in kodi.sets()] == ["nfs://nas/Media/Other/B.mkv"]
+    assert applied["Other/B.mkv"]["ok"]
+
+
+def count(kodi, method: str) -> int:
+    return sum(1 for call in kodi.calls if call[0] == method)
+
+
+def test_the_library_list_is_reused_until_it_is_old(kodi, clock):
+    applier, _ = make_applier(kodi, clock)
+    applied: dict = {}
+    applier.apply([ev(position_s=1.0, ts="2026-11-10T12:00:01.000Z")], applied)
+    applier.apply([ev(position_s=2.0, ts="2026-11-10T12:00:02.000Z")], applied)
+    assert count(kodi, "VideoLibrary.GetMovies") == 1
+    clock[0] += LIBRARY_INDEX_TTL_S + 1
+    applier.apply([ev(position_s=3.0, ts="2026-11-10T12:00:03.000Z")], applied)
+    assert count(kodi, "VideoLibrary.GetMovies") == 2
+
+
+def test_a_miss_in_the_reused_list_reads_the_library_again_once(kodi, clock):
+    applier, _ = make_applier(kodi, clock)
+    applied: dict = {}
+    applier.apply([ev(ts="2026-11-10T12:00:01.000Z")], applied)
+    kodi.movies.append({"movieid": 9, "file": "nfs://nas/Media/Filme/New.mkv"})
+    new = ev(media="Filme/New.mkv", position_s=5.0, ts="2026-11-10T12:00:02.000Z")
+    also = ev(media="Filme/Newer.mkv", position_s=5.0, ts="2026-11-10T12:00:02.000Z")
+    assert applier.apply([new, also], applied) == 2  # the second one is no library item
+    assert count(kodi, "VideoLibrary.GetMovies") == 2  # read again once, not once per miss
+    assert any(c[1].get("movieid") == 9 for c in kodi.sets())
+
+
+def test_a_failed_write_drops_the_reused_list(kodi, clock):
+    applier, _ = make_applier(kodi, clock)
+    applied: dict = {}
+    applier.apply([ev(ts="2026-11-10T12:00:01.000Z")], applied)
+    kodi.fail.add("VideoLibrary.SetMovieDetails")
+    applier.apply([ev(position_s=2.0, ts="2026-11-10T12:00:02.000Z")], applied)
+    kodi.fail.clear()
+    applier.apply([ev(position_s=3.0, ts="2026-11-10T12:00:03.000Z")], applied)
+    assert count(kodi, "VideoLibrary.GetMovies") == 2
+
+
+def test_foreign_path_is_translated_with_what_this_device_played_itself(kodi, clock):
+    """Another device played the file over SMB; here the same share is mounted over NFS."""
+    applier = KodiApplier(kodi, [], lambda: clock[0], lambda msg, level=1: None)
+    played_here = "nfs://10.0.0.5/RAID5/Show/S01/E01.mkv"
+    first = ev(media="smb://nas/RAID5/Show/S01/E01.mkv", unmapped=True, position_s=30.0)
+    second = ev(
+        media="smb://nas/RAID5/Show/S01/E02.mkv", unmapped=True, kind="watched", playcount=1
+    )
+    applied: dict = {}
+    assert applier.apply([first, second], applied, own_paths=[played_here]) == 2
     files = [c[1]["file"] for c in kodi.sets()]
-    assert files == ["nfs://nas/Media/Other/B.mkv", "smb://x/y/C.mkv"]
-    assert all(entry["ok"] for entry in applied.values())
+    assert files == [played_here, "nfs://10.0.0.5/RAID5/Show/S01/E02.mkv"]
+    assert applied[first.media_id]["via"] == "file"
+
+
+def test_foreign_path_on_the_same_location_is_used_as_it_is(kodi, clock):
+    applier = KodiApplier(kodi, [], lambda: clock[0], lambda msg, level=1: None)
+    foreign = ev(media="nfs://10.0.0.5/RAID5/Other/S01/E05.mkv", unmapped=True)
+    own = ["nfs://10.0.0.5/RAID5/Show/S01/E01.mkv"]
+    assert applier.apply([foreign], {}, own_paths=own) == 1
+    assert kodi.sets()[0][1]["file"] == foreign.media_id
+
+
+def test_foreign_path_is_not_written_to_kodi_and_leaves_the_seek_to_the_player(kodi, clock):
+    """A path another device used says nothing about the path here: no fake success, so the
+    fallback seek at the start of the playback still runs."""
+    applier, _ = make_applier(kodi, clock)
+    applied: dict = {}
+    foreign = ev(media="smb://x/y/C.mkv", unmapped=True, kind="watched", playcount=1)
+    assert applier.apply([foreign], applied) == 0
+    assert kodi.sets() == []
+    assert not applied["smb://x/y/C.mkv"]["ok"]
 
 
 def test_set_file_details_failure_is_logged_once_and_not_retried(kodi, clock):
@@ -214,7 +315,8 @@ def test_failed_library_query_is_retried_later(kodi, clock):
     applied: dict = {}
     movie, episode = ev(), ev(media="Serien/S01E01.mkv")
     assert applier.apply([movie, episode], applied) == 1
-    assert "Filme/A.mkv" in applied and "Serien/S01E01.mkv" not in applied
+    assert "Filme/A.mkv" in applied
+    assert "Serien/S01E01.mkv" not in applied
     assert any("Library query failed" in m for m in logs)
 
 
@@ -223,14 +325,16 @@ def test_failed_write_is_retried_later(kodi, clock):
     kodi.fail.add("VideoLibrary.SetMovieDetails")
     applied: dict = {}
     assert applier.apply([ev()], applied) == 0
-    assert applied == {} and any("Could not apply" in m for m in logs)
+    assert applied == {}
+    assert any("Could not apply" in m for m in logs)
 
 
 def test_playing_medium_is_left_alone(kodi, clock):
     applier, _ = make_applier(kodi, clock)
     applied: dict = {}
     assert applier.apply([ev()], applied, playing="Filme/A.mkv") == 0
-    assert kodi.calls == [] and applied == {}
+    assert kodi.calls == []
+    assert applied == {}
     assert applier.apply([ev()], applied, playing=None) == 1
 
 
@@ -293,6 +397,260 @@ def test_manual_change_of_an_unmapped_file(kodi, clock):
     assert engine.recorded[0][1]["unmapped"] is True
 
 
+def manual_with_logs(kodi, clock):
+    applier, _ = make_applier(kodi, clock)
+    logs: list[str] = []
+    engine = FakeEngine()
+    manual = ManualChanges(kodi, MAPS, engine, applier, lambda msg, level=1: logs.append(msg))
+    return manual, engine, logs
+
+
+def test_manual_mark_of_a_file_outside_the_library_uses_the_file_of_the_notification(kodi, clock):
+    manual, engine, logs = manual_with_logs(kodi, clock)
+    file = "nfs://nas/Media/Show/S01/E01.mkv"
+    assert manual.handle(json.dumps({"item": {"type": "unknown", "file": file}, "playcount": 1}))
+    assert manual.handle(json.dumps({"item": {"file": file}, "playcount": 0}))
+    kinds = [(args[0], args[1]) for args, _ in engine.recorded]
+    assert kinds == [("Show/S01/E01.mkv", "watched"), ("Show/S01/E01.mkv", "unwatched")]
+    assert any("Manual change" in m for m in logs)
+
+
+def test_ignored_notifications_are_logged_for_debugging(kodi, clock):
+    manual, _, logs = manual_with_logs(kodi, clock)
+    assert not manual.handle(json.dumps({"item": {"type": "unknown"}, "playcount": 1}))
+    assert not manual.handle(json.dumps({"item": "x", "playcount": 1}))
+    assert sum("Ignored notification" in m for m in logs) == 2
+
+
+# ---- files outside the library: noticing manual marks by asking for the shown folder --------
+
+FOLDER = "nfs://nas/Media/Show/S01/"
+FILE = FOLDER + "E01.mkv"
+OTHER = FOLDER + "E02.mkv"
+
+
+def show(kodi, folder: str = FOLDER, **playcounts: int) -> None:
+    """What Kodi lists for a folder: the files with their playcounts, plus things to ignore."""
+    items: list[dict] = [{"file": folder + "Extras/", "filetype": "directory", "playcount": 0}]
+    items += [
+        {"file": folder + f"{name}.mkv", "filetype": "file", "playcount": count}
+        for name, count in playcounts.items()
+    ]
+    items += [
+        {"file": folder + "odd1.mkv", "filetype": "file", "playcount": True},
+        {"file": folder + "odd2.mkv", "filetype": "file"},
+        {"filetype": "file", "playcount": 1},
+    ]
+    kodi.directories[folder] = items
+
+
+def settle(poller, folder: str = FOLDER) -> None:
+    """The folder stays shown for SETTLE_STEPS seconds: the first look is the baseline."""
+    for _ in range(SETTLE_STEPS + 1):
+        poller.touch(folder)
+
+
+def poller_with(kodi, clock, known=None, folder=FOLDER):
+    """A poller with a baseline for the folder (what Kodi lists at that moment)."""
+    applier, _ = make_applier(kodi, clock)
+    engine = FakeEngine(known)
+    manual = ManualChanges(kodi, MAPS, engine, applier, lambda *a, **k: None)
+    poller = FilePoller(kodi, MAPS, manual, applier)
+    settle(poller, folder)
+    return poller, engine, applier
+
+
+def asked(kodi) -> list[str]:
+    return [c[1]["directory"] for c in kodi.calls if c[0] == "Files.GetDirectory"]
+
+
+def test_a_file_the_add_on_never_saw_is_noticed_when_it_is_marked(kodi, clock):
+    show(kodi, E01=0, E02=1)
+    poller, engine, _ = poller_with(kodi, clock)  # the baseline is taken when the folder settles
+    assert poller.check(FOLDER) == 0
+    assert engine.recorded == []
+    show(kodi, E01=1, E02=1)  # E01 marked as watched in the file list
+    assert poller.check(FOLDER) == 1
+    show(kodi, E01=1, E02=0)  # E02 unmarked
+    assert poller.check(FOLDER) == 1
+    assert [(a[0], a[1], a[4]) for a, _ in engine.recorded] == [
+        ("Show/S01/E01.mkv", "watched", 1),
+        ("Show/S01/E02.mkv", "unwatched", 0),
+    ]
+
+
+def test_the_baseline_is_taken_once_after_the_folder_stayed_shown(kodi, clock):
+    show(kodi, E01=0)
+    applier, _ = make_applier(kodi, clock)
+    poller = FilePoller(
+        kodi, MAPS, ManualChanges(kodi, MAPS, FakeEngine(), applier, print), applier
+    )
+    for _ in range(SETTLE_STEPS):
+        poller.touch(FOLDER)
+    assert asked(kodi) == []  # not yet: the folder only just settled
+    poller.touch(FOLDER)
+    poller.touch(FOLDER)
+    assert asked(kodi) == [FOLDER]  # once, not every second
+
+
+def test_nothing_is_asked_while_the_shown_folder_changes_or_is_no_file_folder(kodi, clock):
+    show(kodi, E01=0)
+    applier, _ = make_applier(kodi, clock)
+    poller = FilePoller(
+        kodi, MAPS, ManualChanges(kodi, MAPS, FakeEngine(), applier, print), applier
+    )
+    for folder in ("", "videodb://tvshows/titles/", "plugin://x/", "sources://video/"):
+        settle(poller, folder)
+        assert poller.check(folder) == 0
+    for step in range(20):  # moving around: a new folder every second
+        poller.touch(f"nfs://nas/Media/Show/S0{step}/")
+    assert asked(kodi) == []
+    settle(poller, FOLDER)
+    assert asked(kodi) == [FOLDER]
+
+
+def test_check_needs_a_baseline_for_the_folder_that_is_still_shown(kodi, clock):
+    show(kodi, E01=0)
+    poller, _, _ = poller_with(kodi, clock)
+    before = len(asked(kodi))
+    assert poller.check("nfs://nas/Media/Other/") == 0  # another folder
+    poller.touch("nfs://nas/Media/Other/")  # the user moved: no baseline for it yet
+    assert poller.check(FOLDER) == 0
+    assert poller.check("nfs://nas/Media/Other/") == 0
+    assert len(asked(kodi)) == before
+
+
+def test_a_listing_that_fails_or_has_odd_entries_changes_nothing(kodi, clock):
+    poller, engine, _ = poller_with(kodi, clock)  # Kodi cannot list the folder
+    assert poller.check(FOLDER) == 0
+    show(kodi)  # only a sub folder and odd entries
+    assert poller.check(FOLDER) == 0
+    assert engine.recorded == []
+
+
+def test_what_the_add_on_wrote_itself_is_no_manual_change(kodi, clock):
+    other = "nfs://nas/Media/Other/"
+    show(kodi, folder=other, B=0)
+    poller, engine, applier = poller_with(kodi, clock, folder=other)
+    applier.apply([ev(media="Other/B.mkv", kind="watched", playcount=1)], {})
+    assert applier.file_playcounts[other + "B.mkv"] == 1
+    show(kodi, folder=other, B=1)  # Kodi shows what we wrote
+    assert poller.check(other) == 0
+    assert engine.recorded == []
+
+
+def test_a_change_that_matches_the_nas_state_creates_no_event(kodi, clock):
+    known = ev(media="Show/S01/E01.mkv", kind="watched", playcount=1)
+    show(kodi, E01=0)
+    poller, engine, _ = poller_with(kodi, clock, known=known)
+    show(kodi, E01=1)
+    assert poller.check(FOLDER) == 0
+    assert engine.recorded == []
+
+
+def test_only_the_newest_playcounts_are_remembered(kodi, clock, monkeypatch):
+    monkeypatch.setattr("watchsync.applier.MAX_KNOWN_COUNTS", 3)
+    show(kodi, A=0, B=0, C=0, D=0, E=0)
+    _, _, applier = poller_with(kodi, clock)
+    assert list(applier.file_playcounts) == [FOLDER + n + ".mkv" for n in "CDE"]
+
+
+def season(kodi, folder: str, **playcounts: int) -> str:
+    """A folder with files and a sub folder entry; returns the folder."""
+    show(kodi, folder=folder, **playcounts)
+    return folder
+
+
+def test_a_marked_folder_sends_the_state_of_all_files_below_it(kodi, clock):
+    poller, engine, _ = poller_with(kodi, clock)
+    root_folder = "nfs://nas/Media/Show/"
+    season(kodi, root_folder, Extra=1)
+    kodi.directories[root_folder].append(
+        {"file": root_folder + "S01/", "filetype": "directory", "playcount": 0}
+    )
+    season(kodi, root_folder + "S01/", E01=1, E02=1, E03=0)
+    kodi.directories[root_folder + "S01/"].append(
+        {"file": root_folder + "S01/Specials/", "filetype": "directory"}
+    )
+    season(kodi, root_folder + "S01/Specials/", Sp1=1)
+    assert poller.sync_tree(root_folder.rstrip("/")) == 4  # E03 is unknown and not watched
+    sent = sorted((a[0], a[1], a[4]) for a, _ in engine.recorded)
+    assert sent == [
+        ("Show/Extra.mkv", "watched", 1),
+        ("Show/S01/E01.mkv", "watched", 1),
+        ("Show/S01/E02.mkv", "watched", 1),
+        ("Show/S01/Specials/Sp1.mkv", "watched", 1),
+    ]
+
+
+def test_an_unmarked_folder_sends_unwatched_for_files_the_nas_knows_as_watched(kodi, clock):
+    known = ev(media="Show/S01/E01.mkv", kind="watched", playcount=1)
+    poller, engine, _ = poller_with(kodi, clock, known=known)
+    season(kodi, "nfs://nas/Media/Show/S01/", E01=0)
+    assert poller.sync_tree("nfs://nas/Media/Show/S01/") == 1
+    assert [(a[1], a[4]) for a, _ in engine.recorded] == [("unwatched", 0)]
+
+
+class OnlyE01Known(FakeEngine):
+    def lookup(self, media_id: str, fp: str | None) -> Event | None:
+        return self.known if media_id == "Show/S01/E01.mkv" else None
+
+
+def test_a_marked_folder_does_not_resend_what_is_known_and_is_not_deeper_than_allowed(kodi, clock):
+    poller, _, applier = poller_with(kodi, clock)
+    engine = OnlyE01Known(ev(media="Show/S01/E01.mkv", kind="watched", playcount=1))
+    poller.manual.engine = engine
+    folder = "nfs://nas/Media/Show/"
+    for depth in range(MAX_TREE_DEPTH + 3):
+        here = folder + "d/" * depth
+        season(kodi, here, **{f"F{depth}": 1})
+        kodi.directories[here].append({"file": here + "d/", "filetype": "directory"})
+    season(kodi, folder + "S01/", E01=1)
+    kodi.directories[folder].append({"file": folder + "S01/", "filetype": "directory"})
+    poller.sync_tree(folder)
+    names = sorted(a[0] for a, _ in engine.recorded)
+    assert "Show/S01/E01.mkv" not in names  # the NAS knows it as watched already
+    assert len(names) == MAX_TREE_DEPTH + 1  # the levels 0 .. MAX_TREE_DEPTH, no deeper
+    assert applier.file_playcounts[folder + "S01/E01.mkv"] == 1
+
+
+def test_a_marked_folder_lists_at_most_a_limited_number_of_folders(kodi, clock):
+    poller, _, _ = poller_with(kodi, clock)
+    top = "nfs://nas/Media/Many/"
+    kodi.directories[top] = [
+        {"file": f"{top}s{n}/", "filetype": "directory"} for n in range(MAX_TREE_LISTINGS + 20)
+    ]
+    for n in range(MAX_TREE_LISTINGS + 20):
+        kodi.directories[f"{top}s{n}/"] = []
+    poller.sync_tree(top)
+    assert len(asked(kodi)) <= MAX_TREE_LISTINGS + 1  # the baseline look of the fixture is one
+
+
+def test_only_file_folders_are_walked_when_a_folder_was_marked(kodi, clock):
+    poller, _, _ = poller_with(kodi, clock)
+    before = len(asked(kodi))
+    assert poller.sync_tree("videodb://tvshows/titles/") == 0
+    assert poller.sync_tree("") == 0
+    assert len(asked(kodi)) == before
+
+
+def test_a_reset_gives_no_playcount_baseline(kodi, clock):
+    applier, _ = make_applier(kodi, clock)
+    applier._remember_file("nfs://x/a.mkv", ev(media="x/a.mkv", kind="reset"))
+    assert "nfs://x/a.mkv" in applier.file_media
+    assert applier.file_playcounts == {}
+
+
+def test_the_applier_remembers_only_the_newest_files(kodi, clock):
+    applier, _ = make_applier(kodi, clock)
+    for number in range(MAX_KNOWN_FILES + 5):
+        applier._remember_file(f"nfs://x/{number}.mkv", ev(media=f"x/{number}.mkv"))
+    applier._remember_file("nfs://x/304.mkv", ev(media="x/304.mkv"))  # same file again
+    assert len(applier.file_media) == MAX_KNOWN_FILES
+    assert next(reversed(applier.file_media)) == "nfs://x/304.mkv"
+    assert "nfs://x/0.mkv" not in applier.file_media
+
+
 def test_same_playcount_as_the_state_creates_no_event(kodi, clock):
     manual, engine, _ = make_manual(kodi, clock, ev(kind="watched", playcount=1))
     assert not manual.handle(update(playcount=1))
@@ -304,7 +662,8 @@ def test_echo_of_our_own_write_is_ignored(kodi, clock):
     applier.apply([ev(kind="watched", playcount=1)], {})
     kodi.calls.clear()
     assert not manual.handle(update(playcount=1))
-    assert engine.recorded == [] and kodi.calls == []  # not even the details are fetched
+    assert engine.recorded == []  # not even the details are fetched
+    assert kodi.calls == []
     # the user un-marks it right after: that is a real change
     assert manual.handle(update(playcount=0))
     clock[0] += ECHO_WINDOW_S + 1
@@ -348,23 +707,17 @@ def test_unresolvable_file_is_ignored(kodi, clock):
 
 
 class Env:
-    def __init__(self, rig: Rig, name: str = "b", mode: int = 0, answer: bool = True) -> None:
+    def __init__(self, rig: Rig, name: str = "b") -> None:
         self.rig = rig
         self.engine = rig.device(name)
         self.engine.sync()
-        self.seeks: list[float] = []
-        self.asked: list[float] = []
         self.logs: list[str] = []
-        self.answer = answer
         self.fingerprints = Fingerprinter(lambda path: (_ for _ in ()).throw(OSError("no")))
         self.tracker = Tracker(
             self.engine,
             MAPS,
             self.fingerprints,
             0.9,
-            mode,
-            self.seeks.append,
-            lambda pos: self.asked.append(pos) or self.answer,
             lambda msg, level=1: self.logs.append(msg),
         )
 
@@ -384,6 +737,14 @@ def env() -> Env:
 
 
 PATH = "nfs://nas/Media/Filme/A.mkv"
+
+
+def test_playback_of_an_unmapped_file_remembers_its_path(env):
+    env.tracker.started("smb://other/Share/Show/S01/E01.mkv", 0.0, 100.0)
+    env.tracker.started("smb://other/Share/Show/S01/E01.mkv", 0.0, 100.0)
+    assert env.engine.local.own_paths == ["smb://other/Share/Show/S01/E01.mkv"]
+    env.tracker.started(PATH, 0.0, 100.0)  # mapped: nothing to learn from
+    assert env.engine.local.own_paths == ["smb://other/Share/Show/S01/E01.mkv"]
 
 
 def test_untrackable_playback_is_ignored(env):
@@ -414,11 +775,80 @@ def test_progress_pause_and_stop_events(env):
     assert env.tracker.current is None
 
 
-def test_stop_near_the_beginning_resets_the_resume_point(env):
+def test_a_quick_look_at_a_file_without_a_saved_position_writes_nothing(env):
     env.tracker.started(PATH, 0.0, 7000.0)
-    env.tracker.tick(2.0, 7000.0)
+    env.tracker.tick(0.5, 7000.0)
+    env.tracker.paused(0.5)
+    env.tracker.stopped()
+    assert env.events() == []
+
+
+def test_stopping_right_at_the_start_clears_the_saved_position(env):
+    """Saved position, Kodi resumes there, and a stop within a second of the start."""
+    put_foreign_progress(env)
+    env.tracker.started(PATH, 600.0, 7000.0)
+    env.tracker.tick(600.5, 7000.0)
+    env.rig.clock.advance(0.5)
+    env.tracker.stopped()
+    last = env.events()[-1]
+    assert (last.type, last.position_s) == ("reset", 0.0)
+    state = env.engine.lookup("Filme/A.mkv", None)
+    assert state is not None
+    assert state.type == "reset"
+
+
+def test_stopping_before_the_stream_is_up_still_clears_the_saved_position(env):
+    """onPlayBackStarted comes first; the user stops before onAVStarted ever arrives."""
+    put_foreign_progress(env)
+    env.tracker.started(PATH, 0.0, 0.0)
     env.tracker.stopped()
     assert env.events()[-1].type == "reset"
+
+
+def test_the_late_stream_start_only_adds_position_and_duration(env):
+    put_foreign_progress(env)
+    env.tracker.started(PATH, 0.0, 0.0)
+    first = env.tracker.current
+    assert first is not None
+    assert first.had_saved
+    env.rig.clock.advance(3)
+    env.tracker.started(PATH, 600.0, 7000.0)  # onAVStarted: Kodi resumed at the saved position
+    assert env.tracker.current is first
+    assert (first.position, first.duration) == (600.0, 7000.0)
+    assert first.started_at < env.engine.mono()  # the stop-quickly clock keeps its first start
+    env.tracker.stopped()  # 3 s after the first start: not quick any more, so progress, no reset
+    assert env.events()[-1].type == "progress"
+
+
+def test_even_a_short_saved_position_is_cleared_by_a_quick_stop(env):
+    put_foreign_progress(env, position_s=1.5)
+    env.tracker.started(PATH, 0.0, 7000.0)
+    env.tracker.stopped()
+    assert env.events()[-1].type == "reset"
+
+
+def test_stopping_at_the_start_of_a_playback_from_the_beginning_clears_it_too(env):
+    put_foreign_progress(env)  # the user answered Kodi's resume question with "from beginning"
+    env.tracker.started(PATH, 0.0, 7000.0)
+    env.rig.clock.advance(5)
+    env.tracker.tick(0.5, 7000.0)
+    env.tracker.stopped()
+    assert env.events()[-1].type == "reset"
+
+
+def test_stopping_later_keeps_the_progress(env):
+    put_foreign_progress(env)
+    env.tracker.started(PATH, 0.0, 7000.0)
+    env.tracker.tick(20.0, 7000.0)
+    env.rig.clock.advance(20)
+    env.tracker.stopped()
+    assert {(e.type, e.position_s) for e in env.events()} == {("progress", 20.0)}
+
+
+def test_progress_is_recorded_from_five_seconds_on(env):
+    env.tracker.started(PATH, 0.0, 7000.0)
+    env.tracker.paused(5.0)
+    assert [e.position_s for e in env.events()] == [5.0]
 
 
 def test_threshold_marks_watched_once_and_counts_up(env):
@@ -444,7 +874,8 @@ def test_stop_after_threshold_without_tick_is_watched(env):
 def test_end_of_playback_is_watched(env):
     env.tracker.started(PATH, 0.0, 100.0)
     env.tracker.ended()
-    assert env.events()[-1].type == "watched" and env.events()[-1].playcount == 1
+    assert env.events()[-1].type == "watched"
+    assert env.events()[-1].playcount == 1
     env.tracker.ended()
     assert len(env.events()) == 1
 
@@ -452,7 +883,8 @@ def test_end_of_playback_is_watched(env):
 def test_unknown_duration_gives_no_ratio_and_no_duration_in_the_event(env):
     env.tracker.started(PATH, 0.0, 0.0)
     env.tracker.tick(500.0, 0.0)
-    assert env.events()[0].duration_s is None and env.events()[0].type == "progress"
+    assert env.events()[0].duration_s is None
+    assert env.events()[0].type == "progress"
 
 
 def test_unmapped_path_is_reported(env):
@@ -468,47 +900,29 @@ def put_foreign_progress(env: Env, device: str = "a", **kw: Any) -> None:
     env.engine.sync()
 
 
-def test_newer_position_of_another_device_is_a_fallback_seek(env):
+def test_state_of_another_device_is_found_by_file_name_and_folders(env):
+    """No fingerprint match and another path: the last folders and the file name still match."""
+    other = env.rig.device("a")
+    other.sync()
+    record(other, media="smb://nas/RAID5/filme/A.mkv", position_s=500.0)
+    env.engine.sync()
+    mine = "nfs://elsewhere/RAID5/Filme/A.mkv"
+    found = env.engine.lookup(mine, None)
+    assert found is not None
+    assert found.position_s == 500.0
+    assert env.engine.lookup(mine, "s=1;h=unknown;") == found
+    assert env.engine.lookup("nfs://elsewhere/RAID5/Other/A.mkv", None) is None
+
+
+def test_the_add_on_never_jumps_or_asks_kodi_resumes_by_itself(env):
+    """The saved position is in Kodi's database; where to continue is Kodi's question."""
     put_foreign_progress(env)
+    before = list(env.engine.local.queue)
     env.tracker.started(PATH, 0.0, 7000.0)
-    assert env.seeks == [600.0] and env.tracker.current.position == 600.0
-
-
-def test_ask_mode_respects_the_answer():
-    no = Env(Rig(), mode=1, answer=False)
-    put_foreign_progress(no)
-    no.tracker.started(PATH, 0.0, 7000.0)
-    assert no.asked == [600.0] and no.seeks == []
-    yes = Env(Rig(), mode=1, answer=True)
-    put_foreign_progress(yes)
-    yes.tracker.started(PATH, 0.0, 7000.0)
-    assert yes.seeks == [600.0]
-
-
-def test_no_seek_when_kodi_already_has_the_position(env):
-    put_foreign_progress(env)
-    state = env.engine.state["Filme/A.mkv"]
-    env.engine.local.applied["Filme/A.mkv"] = applied_entry(state, ok=True)
-    env.tracker.started(PATH, 0.0, 7000.0)
-    assert env.seeks == []
-    # applied but not successfully (file outside the library): still seek
-    env.engine.local.applied["Filme/A.mkv"] = applied_entry(state, ok=False)
-    env.tracker.started(PATH, 0.0, 7000.0)
-    assert env.seeks == [600.0]
-
-
-def test_no_seek_for_close_positions_own_events_or_other_types(env):
-    put_foreign_progress(env, position_s=602.0)
-    env.tracker.started(PATH, 600.0, 7000.0)
-    assert env.seeks == []
-    own = Env(Rig(), name="b")
-    own.engine.record("Filme/A.mkv", "progress", 500.0, 7000.0, 0)
-    own.tracker.started(PATH, 0.0, 7000.0)
-    assert own.seeks == []
-    watched = Env(Rig())
-    put_foreign_progress(watched, kind="watched", position_s=0.0, playcount=1)
-    watched.tracker.started(PATH, 0.0, 7000.0)
-    assert watched.seeks == []
+    assert env.tracker.current is not None
+    assert env.tracker.current.position == 0.0
+    assert all("Resuming" not in m for m in env.logs)
+    assert env.engine.local.queue == before
 
 
 # ---- PlayerMonitor adapter ---------------------------------------------------------------
@@ -583,7 +997,8 @@ def test_player_callback_errors_are_logged_not_raised(player):
     tracker.fail = True
     player.tracker = tracker  # type: ignore[assignment]
     player.onPlayBackStopped()
-    assert tracker.logs and "onPlayBackStopped failed" in tracker.logs[0]
+    assert tracker.logs
+    assert "onPlayBackStopped failed" in tracker.logs[0]
 
 
 def test_current_dataclass_defaults():
