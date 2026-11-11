@@ -13,6 +13,7 @@ from .events import Event, parse_ts
 from .logger import DEBUG, INFO, WARNING
 from .mediaid import (
     Mapping,
+    PathResolver,
     file_name_key,
     from_media_id,
     is_trackable,
@@ -108,8 +109,15 @@ def is_applied(event: Event, applied: Applied) -> bool:
     return bool(entry) and parse_ts(entry["ts"]) >= parse_ts(event.ts)
 
 
-def applied_entry(event: Event, ok: bool = True) -> dict[str, Any]:
-    return {"playcount": event.playcount, "position_s": event.position_s, "ts": event.ts, "ok": ok}
+def applied_entry(event: Event, ok: bool = True, via: str = "library") -> dict[str, Any]:
+    """What was written to Kodi; via says whether to a library item or to a file path."""
+    return {
+        "playcount": event.playcount,
+        "position_s": event.position_s,
+        "ts": event.ts,
+        "ok": ok,
+        "via": via,
+    }
 
 
 class KodiApplier:
@@ -171,13 +179,16 @@ class KodiApplier:
             self.echo[(kind.item_type, dbid)] = (values["playcount"], self.mono())
         self.rpc(kind.set_method, {kind.id_key: dbid, **values})
 
-    def _apply_file(self, event: Event) -> bool:
-        """Files outside the library: Files.SetFileDetails for mapped ids (untested, see README).
+    def _apply_file(self, event: Event, resolver: PathResolver) -> bool:
+        """Files outside the library: Files.SetFileDetails for a path this device can open.
 
-        An unmapped id is the full path another device used; it says nothing about the path here
-        (other protocol or host), and writing details for it would only look like success. The
-        fallback seek at the start of the playback covers those files."""
-        path = None if event.unmapped else from_media_id(event.media_id, self.mappings)
+        A mapped id gives that path; for a full path another device used, the resolver translates
+        it with what this device learned from its own playbacks (same location, or the
+        difference between two locations). Without a known path nothing is written: details for a
+        foreign path would only look like success. The fallback seek at the start of the playback
+        covers those files."""
+        path = resolver.resolve(event.media_id) if event.unmapped else None
+        path = path or (None if event.unmapped else from_media_id(event.media_id, self.mappings))
         if not path:
             return False
         try:
@@ -191,15 +202,23 @@ class KodiApplier:
             return False
         return True
 
-    def apply(self, events: Iterable[Event], applied: Applied, playing: str | None = None) -> int:
+    def apply(
+        self,
+        events: Iterable[Event],
+        applied: Applied,
+        playing: str | None = None,
+        own_paths: Iterable[str] = (),
+    ) -> int:
         """Write entries newer than the applied state to Kodi; returns how many worked.
 
         The medium that is playing right now is skipped: its foreign events wait until playback
         stopped and are then compared with the own stop event by the merge rules.
         """
-        pending = [e for e in events if e.media_id != playing and not is_applied(e, applied)]
+        known = list(events)
+        pending = [e for e in known if e.media_id != playing and not is_applied(e, applied)]
         if not pending:
             return 0
+        resolver = PathResolver(own_paths, [e.media_id for e in known])
         index, complete = self._library_index()
         by_name: dict[str, list[str]] = {}
         for media_id in index:
@@ -214,11 +233,11 @@ class KodiApplier:
                     self._apply_library(target[0], target[1], event)
                     ok = True
                 else:
-                    ok = self._apply_file(event)
+                    ok = self._apply_file(event, resolver)
             except RpcError as exc:
                 self.log(f"Could not apply {event.media_id}: {exc}", WARNING)
                 continue
-            applied[event.media_id] = applied_entry(event, ok)
+            applied[event.media_id] = applied_entry(event, ok, "library" if target else "file")
             done += ok
         self.log(f"Applied {done} of {len(pending)} changes to Kodi", INFO)
         return done

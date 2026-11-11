@@ -33,6 +33,7 @@ COMPACT_THRESHOLD = 100
 CLOCK_TOLERANCE_S = 120.0
 # A file time further away than this is not a clock problem but a share that reports nonsense
 CLOCK_PLAUSIBLE_S = 366 * 24 * 3600.0
+MAX_OWN_PATHS = 300
 
 Log = Callable[..., None]
 
@@ -354,6 +355,14 @@ class SyncEngine:
             if event:
                 return event
         return next((e for e in self.state.values() if same_medium(e.media_id, media_id)), None)
+
+    def remember_path(self, path: str) -> None:
+        """Keep the path of a file played here (the newest MAX_OWN_PATHS)."""
+        paths = self.local.own_paths
+        if path in paths:
+            return
+        paths.append(path)
+        del paths[:-MAX_OWN_PATHS]
 
     def status(self) -> dict[str, Any]:
         return {

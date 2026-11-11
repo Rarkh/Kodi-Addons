@@ -65,6 +65,7 @@ class Tracker:
             ref.id, ref.unmapped, fp, duration, position, previous.playcount if previous else 0
         )
         if ref.unmapped:
+            self.engine.remember_path(path)
             self.log(f"No path mapping for {ref.id}: matched by file name and folders", DEBUG)
         if previous:
             self._maybe_resume(cur, previous)
@@ -78,8 +79,9 @@ class Tracker:
         if previous.device == self.engine.device or previous.type != "progress":
             return
         applied = self.engine.local.applied
-        if is_applied(previous, applied) and applied[previous.media_id]["ok"]:
-            return
+        entry = applied.get(previous.media_id)
+        if is_applied(previous, applied) and entry and entry["ok"] and entry.get("via") != "file":
+            return  # Kodi's library has it; a file path entry may not make Kodi resume: seek
         if abs(previous.position_s - cur.position) <= RESUME_TOLERANCE_S:
             return
         if self.resume_mode == RESUME_AUTO or self.ask_resume(previous.position_s):

@@ -122,6 +122,14 @@ The NAS is the truth; Kodi's database is only the display on this device.
 7. **Other sync add-ons (e.g. Trakt)** change the same fields. Disable them on devices that run
    WatchSync.
 
+**Flags for files outside the library** (watched mark, "in progress" mark in file lists): Kodi keeps
+them per path, so the add-on needs the path *this* device uses. It learns it from the files this
+device played itself: if another device has an event for the same file under another location
+(`smb://nas/` there, `nfs://192.168.0.5/` here), the difference is the translation for all other
+files of that share; a location this device also uses needs none. Without a known path nothing is
+written (the fallback seek at the start of the playback still works). Written with
+`Files.SetFileDetails`, which has to be tested on real devices.
+
 Not in Phase 1: repository set-up, Docker/HTTP backend, series special cases beyond the path id.
 
 ## Settings

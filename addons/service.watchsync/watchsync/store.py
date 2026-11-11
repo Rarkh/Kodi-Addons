@@ -27,6 +27,8 @@ class LocalState:
     pending: dict[str, dict[str, Any]] = field(default_factory=dict)
     # media id -> what this add-on last wrote into Kodi (playcount, position_s, ts, ok)
     applied: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # paths of the files this device played itself (to translate other devices' paths)
+    own_paths: list[str] = field(default_factory=list)
     last_sync: str = ""
 
 

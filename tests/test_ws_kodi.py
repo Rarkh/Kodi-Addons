@@ -202,9 +202,30 @@ def test_files_outside_the_library_use_set_file_details_for_mapped_paths(kodi, c
     assert applied["Other/B.mkv"]["ok"]
 
 
-def test_foreign_unmapped_path_is_not_written_to_kodi_and_leaves_the_seek_to_the_player(
-    kodi, clock
-):
+def test_foreign_path_is_translated_with_what_this_device_played_itself(kodi, clock):
+    """Another device played the file over SMB; here the same share is mounted over NFS."""
+    applier = KodiApplier(kodi, [], lambda: clock[0], lambda msg, level=1: None)
+    played_here = "nfs://10.0.0.5/RAID5/Show/S01/E01.mkv"
+    first = ev(media="smb://nas/RAID5/Show/S01/E01.mkv", unmapped=True, position_s=30.0)
+    second = ev(
+        media="smb://nas/RAID5/Show/S01/E02.mkv", unmapped=True, kind="watched", playcount=1
+    )
+    applied: dict = {}
+    assert applier.apply([first, second], applied, own_paths=[played_here]) == 2
+    files = [c[1]["file"] for c in kodi.sets()]
+    assert files == [played_here, "nfs://10.0.0.5/RAID5/Show/S01/E02.mkv"]
+    assert applied[first.media_id]["via"] == "file"
+
+
+def test_foreign_path_on_the_same_location_is_used_as_it_is(kodi, clock):
+    applier = KodiApplier(kodi, [], lambda: clock[0], lambda msg, level=1: None)
+    foreign = ev(media="nfs://10.0.0.5/RAID5/Other/S01/E05.mkv", unmapped=True)
+    own = ["nfs://10.0.0.5/RAID5/Show/S01/E01.mkv"]
+    assert applier.apply([foreign], {}, own_paths=own) == 1
+    assert kodi.sets()[0][1]["file"] == foreign.media_id
+
+
+def test_foreign_path_is_not_written_to_kodi_and_leaves_the_seek_to_the_player(kodi, clock):
     """A path another device used says nothing about the path here: no fake success, so the
     fallback seek at the start of the playback still runs."""
     applier, _ = make_applier(kodi, clock)
@@ -415,6 +436,14 @@ def env() -> Env:
 PATH = "nfs://nas/Media/Filme/A.mkv"
 
 
+def test_playback_of_an_unmapped_file_remembers_its_path(env):
+    env.tracker.started("smb://other/Share/Show/S01/E01.mkv", 0.0, 100.0)
+    env.tracker.started("smb://other/Share/Show/S01/E01.mkv", 0.0, 100.0)
+    assert env.engine.local.own_paths == ["smb://other/Share/Show/S01/E01.mkv"]
+    env.tracker.started(PATH, 0.0, 100.0)  # mapped: nothing to learn from
+    assert env.engine.local.own_paths == ["smb://other/Share/Show/S01/E01.mkv"]
+
+
 def test_untrackable_playback_is_ignored(env):
     env.tracker.started("plugin://x/", 0.0, 100.0)
     assert env.tracker.current is None
@@ -548,6 +577,11 @@ def test_no_seek_when_kodi_already_has_the_position(env):
     assert env.seeks == []
     # applied but not successfully (file outside the library): still seek
     env.engine.local.applied["Filme/A.mkv"] = applied_entry(state, ok=False)
+    env.tracker.started(PATH, 0.0, 7000.0)
+    assert env.seeks == [600.0]
+    # written for a file path: Kodi may not resume from it, so the seek stays as a safety net
+    env.seeks.clear()
+    env.engine.local.applied["Filme/A.mkv"] = applied_entry(state, ok=True, via="file")
     env.tracker.started(PATH, 0.0, 7000.0)
     assert env.seeks == [600.0]
 

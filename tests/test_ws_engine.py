@@ -463,3 +463,13 @@ def test_failing_local_cache_is_only_logged(rig):
     )
     engine.sync()
     assert any("Local cache not written" in m for m in logs)
+
+
+def test_own_paths_are_remembered_once_and_capped(rig):
+    a = rig.device("a")
+    a.remember_path("nfs://x/a.mkv")
+    a.remember_path("nfs://x/a.mkv")
+    assert a.local.own_paths == ["nfs://x/a.mkv"]
+    for number in range(305):
+        a.remember_path(f"nfs://x/{number}.mkv")
+    assert len(a.local.own_paths) == 300 and a.local.own_paths[-1] == "nfs://x/304.mkv"

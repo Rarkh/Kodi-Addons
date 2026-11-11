@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 from urllib.parse import unquote
 
 CHUNK = 64 * 1024
@@ -125,6 +125,71 @@ def same_medium(first: str, second: str) -> bool:
     one, two = _parts(first), _parts(second)
     depth = min(len(one), len(two), MATCH_DEPTH)
     return depth >= MIN_MATCH_PARTS and one[-depth:] == two[-depth:]
+
+
+_ANY_LOCATION = re.compile(r"^(?:[A-Za-z][A-Za-z0-9+.-]*://[^/]*/|[A-Za-z]:/)")
+
+
+def location_of(path: str) -> str:
+    """Where a path lives: "nfs://host/" or a drive "r:/" (lower case); "" for anything else."""
+    match = _ANY_LOCATION.match(normalize_path(path))
+    return match.group(0).lower() if match else ""
+
+
+class PathResolver:
+    """Finds the path this device can open for an id another device wrote.
+
+    Learned from the files this device played itself (own_paths): if another device has an id for
+    the same file, the difference in front of the common tail (file name and folders) is the
+    translation between the two locations, e.g. smb://nas/ and nfs://192.168.0.5/. The same
+    location needs no translation. Nothing is guessed: unknown locations give None.
+    """
+
+    def __init__(self, own_paths: Iterable[str], known_ids: Iterable[str]) -> None:
+        self.own = [path for path in own_paths if path]
+        self.locations = {location_of(path): path for path in self.own if location_of(path)}
+        by_name: dict[str, list[str]] = {}
+        for media_id in known_ids:
+            by_name.setdefault(file_name_key(media_id), []).append(media_id)
+        pairs: dict[str, tuple[str, bool]] = {}
+        for own in self.own:
+            for media_id in by_name.get(file_name_key(own), ()):
+                pair = self._pair(own, media_id)
+                if pair:
+                    pairs.setdefault(pair[1].lower(), (pair[0], "\\" in own))
+        # longest foreign prefix first: the most specific translation wins
+        self.pairs = sorted(pairs.items(), key=lambda item: len(item[0]), reverse=True)
+
+    @staticmethod
+    def _pair(own_path: str, foreign_id: str) -> tuple[str, str] | None:
+        """(own prefix, foreign prefix) if both name the same file at different locations."""
+        own, foreign = normalize_path(own_path).split("/"), normalize_path(foreign_id).split("/")
+        common = 0
+        while (
+            common < min(len(own), len(foreign))
+            and own[-1 - common].lower() == foreign[-1 - common].lower()
+        ):
+            common += 1
+        if common < MIN_MATCH_PARTS or common >= len(own) or common >= len(foreign):
+            return None
+        own_prefix, foreign_prefix = (
+            "/".join(own[:-common]) + "/",
+            "/".join(foreign[:-common]) + "/",
+        )
+        return (
+            None if own_prefix.lower() == foreign_prefix.lower() else (own_prefix, foreign_prefix)
+        )
+
+    def resolve(self, media_id: str) -> str | None:
+        normal = normalize_path(media_id)
+        same = self.locations.get(location_of(normal))
+        if same:
+            return normal.replace("/", "\\") if "\\" in same else normal
+        for foreign_prefix, (own_prefix, backslashes) in self.pairs:
+            if normal.lower().startswith(foreign_prefix):
+                path = own_prefix + normal[len(foreign_prefix) :]
+                return path.replace("/", "\\") if backslashes else path
+        return None
 
 
 def fingerprint(file: Any) -> str | None:

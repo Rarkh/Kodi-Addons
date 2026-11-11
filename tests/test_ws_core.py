@@ -362,3 +362,53 @@ def test_same_medium_ignores_protocol_host_share_and_case(first, second, same):
 def test_file_name_key():
     assert mediaid.file_name_key("smb://nas/Show/S01/E01.MKV") == "e01.mkv"
     assert mediaid.file_name_key("") == ""
+
+
+@pytest.mark.parametrize(
+    ("path", "location"),
+    [
+        ("nfs://192.168.0.5/RAID5/a.mkv", "nfs://192.168.0.5/"),
+        ("SMB://NAS/Share/a.mkv", "smb://nas/"),
+        ("R:\\Filme\a.mkv", "r:/"),
+        ("/media/nas/a.mkv", ""),
+    ],
+)
+def test_location_of(path, location):
+    assert mediaid.location_of(path) == location
+
+
+NFS_PLAYED = "nfs://10.0.0.5/RAID5/SERIES/Show/S01/E01.mkv"
+
+
+def test_resolver_translates_between_locations_it_has_seen_the_same_file_in():
+    resolver = mediaid.PathResolver([NFS_PLAYED], ["smb://nas/RAID5/SERIES/Show/S01/e01.MKV"])
+    assert resolver.resolve("smb://nas/RAID5/SERIES/Other/S01/E02.mkv") == (
+        "nfs://10.0.0.5/RAID5/SERIES/Other/S01/E02.mkv"
+    )
+    assert resolver.resolve("smb://elsewhere/RAID5/x/y.mkv") is None
+
+
+def test_resolver_uses_the_same_location_unchanged():
+    resolver = mediaid.PathResolver([NFS_PLAYED], [])
+    assert resolver.resolve("nfs://10.0.0.5/Other/x.mkv") == "nfs://10.0.0.5/Other/x.mkv"
+    assert resolver.resolve("nfs://10.9.9.9/Other/x.mkv") is None
+
+
+def test_resolver_keeps_the_windows_style_of_a_drive():
+    resolver = mediaid.PathResolver(
+        [r"R:\SERIES\Show\S01\E01.mkv"], ["smb://nas/SERIES/Show/S01/E01.mkv"]
+    )
+    assert resolver.resolve("smb://nas/SERIES/Other/S01/E02.mkv") == r"R:\SERIES\Other\S01\E02.mkv"
+    assert resolver.resolve("r:/Anything/b.mkv") == "r:\\Anything\\b.mkv"
+
+
+@pytest.mark.parametrize(
+    "known",
+    [
+        "smb://nas/other/name.mkv",  # not the same file
+        "nfs://10.0.0.5/RAID5/SERIES/Show/S01/E01.mkv",  # the same location: nothing to learn
+        "E01.mkv",  # nothing in front of the common tail
+    ],
+)
+def test_resolver_learns_nothing_from_unusable_pairs(known):
+    assert mediaid.PathResolver([NFS_PLAYED], [known]).pairs == []

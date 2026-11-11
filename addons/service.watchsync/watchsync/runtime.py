@@ -133,7 +133,9 @@ class Service:
         # so Kodi's own "resume" works. The medium playing right now waits until it stopped.
         tracker = self.player.tracker
         playing = tracker.current.media_id if tracker and tracker.current else None
-        self.applier.apply(engine.state.values(), engine.local.applied, playing)
+        self.applier.apply(
+            engine.state.values(), engine.local.applied, playing, engine.local.own_paths
+        )
         engine.save()
         self._write_status(engine, config)
         self.log.flush()
