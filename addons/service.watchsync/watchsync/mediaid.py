@@ -52,6 +52,16 @@ def is_trackable(path: str) -> bool:
     return bool(path) and not path.lower().startswith(UNTRACKED_SCHEMES)
 
 
+# Folders of a file view where files can be listed (not library nodes, add-ons, sources ...)
+FILE_SCHEMES = ("nfs://", "smb://", "sftp://", "ftp://", "ftps://", "dav://", "davs://")
+_LOCAL_PATH = re.compile(r"^(?:/|[A-Za-z]:[\\/])")
+
+
+def is_file_folder(path: str) -> bool:
+    """A folder of a share or of local storage, as shown in the file view."""
+    return path.lower().startswith(FILE_SCHEMES) or bool(_LOCAL_PATH.match(path))
+
+
 def normalize_path(path: str) -> str:
     """Forward slashes, no credentials, URL escapes decoded."""
     path = _CREDENTIALS.sub(r"\1", path)

@@ -122,13 +122,13 @@ The NAS is the truth; Kodi's database is only the display on this device.
 7. **Other sync add-ons (e.g. Trakt)** change the same fields. Disable them on devices that run
    WatchSync.
 
-**Marking by hand on files outside the library:** Kodi does not have to announce it, so at every sync
-the playcount of the known files (played here or written by this add-on) **in the folder shown in
-the file view** is read (at most 25); a change since the last look becomes a `watched`/`unwatched`
-event. Kodi checks each file on the share for such a request, and many requests next to Kodi listing
-a share once froze Kodi (navigating up a folder), which is why only the shown folder is looked
-at, only after it was still shown at the previous sync, and for at most 2 s. Files never played or
-written here are not looked at.
+**Marking by hand on files outside the library:** Kodi does not have to announce it, so the folder
+shown in the file view is asked for its files and their playcounts (one request, also for files
+this add-on never saw); a change since the last look becomes a `watched`/`unwatched` event. The
+first look at a folder is only the baseline, so marks that existed before are not sent by this.
+Many single requests next to Kodi listing a share once froze Kodi (navigating up a folder), so
+nothing happens while the shown folder changes: only a folder that was still shown at the previous
+sync (30 s) is asked.
 
 **Flags for files outside the library** (watched mark, "in progress" mark in file lists): Kodi keeps
 them per path, so the add-on needs the path *this* device uses. It learns it from the files this

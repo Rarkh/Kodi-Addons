@@ -412,3 +412,22 @@ def test_resolver_keeps_the_windows_style_of_a_drive():
 )
 def test_resolver_learns_nothing_from_unusable_pairs(known):
     assert mediaid.PathResolver([NFS_PLAYED], [known]).pairs == []
+
+
+@pytest.mark.parametrize(
+    ("folder", "usable"),
+    [
+        ("nfs://192.168.0.5/RAID5/Show/", True),
+        ("SMB://nas/Share/", True),
+        ("/storage/emulated/0/Serien/", True),
+        ("D:\\Serien\\", True),
+        ("D:/Serien/", True),
+        ("", False),
+        ("videodb://tvshows/titles/", False),
+        ("library://video/", False),
+        ("plugin://plugin.video.x/", False),
+        ("sources://video/", False),
+    ],
+)
+def test_is_file_folder(folder, usable):
+    assert mediaid.is_file_folder(folder) is usable

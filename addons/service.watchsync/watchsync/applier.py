@@ -16,8 +16,8 @@ from .mediaid import (
     PathResolver,
     file_name_key,
     from_media_id,
+    is_file_folder,
     is_trackable,
-    normalize_path,
     same_medium,
     to_media_id,
 )
@@ -25,10 +25,9 @@ from .mediaid import (
 Rpc = Callable[[str, Dict[str, Any]], Dict[str, Any]]
 Applied = Dict[str, Dict[str, Any]]
 
-MAX_POLLED = 25
 # The library list is reused this long (a miss or a failed write refreshes it at once)
 LIBRARY_INDEX_TTL_S = 300.0
-POLL_BUDGET_S = 2.0
+MAX_KNOWN_COUNTS = 5000
 MAX_KNOWN_FILES = 300
 ECHO_WINDOW_S = 5.0
 
@@ -367,9 +366,12 @@ class ManualChanges:
 class FilePoller:
     """Notices "marked as watched/unwatched" on files outside the library.
 
-    Kodi does not have to announce such a change, so the playcount of the files this device
-    knows in the folder shown is read from time to time. A change since the last look is a manual
-    change (what this add-on wrote itself is the baseline, so its own writes are no change)."""
+    Kodi does not have to announce such a change. So the folder shown in the file view is asked
+    for its files and their playcounts (one request, also for files this add-on never saw); a
+    change since the last look is a manual change. What this add-on wrote itself is the baseline,
+    so its own writes are no change. Many single requests next to Kodi listing a share once froze
+    Kodi (navigating up a folder), so nothing happens while the shown folder changes: only a
+    folder still shown at the previous look is asked."""
 
     def __init__(
         self,
@@ -384,44 +386,39 @@ class FilePoller:
         self.applier = applier
         self.last_folder = ""
 
-    def _playcount(self, path: str) -> int | None:
-        params = {"file": path, "media": "video", "properties": ["playcount"]}
+    def _files(self, folder: str) -> dict[str, int]:
+        """path -> playcount of the files in a folder (nothing if Kodi cannot list it)."""
+        params = {"directory": folder, "media": "video", "properties": ["playcount"]}
         try:
-            count = self.rpc("Files.GetFileDetails", params).get("filedetails", {}).get("playcount")
+            items = self.rpc("Files.GetDirectory", params).get("files", [])
         except RpcError:
-            return None
-        return count if isinstance(count, int) and not isinstance(count, bool) else None
+            return {}
+        found: dict[str, int] = {}
+        for item in items:
+            path, count = item.get("file"), item.get("playcount")
+            if (
+                item.get("filetype") == "file"
+                and isinstance(path, str)
+                and isinstance(count, int)
+                and not isinstance(count, bool)
+            ):
+                found[path] = count
+        return found
 
-    @staticmethod
-    def _key(folder: str) -> str:
-        return normalize_path(folder).rstrip("/").lower()
-
-    def poll(self, own_paths: Iterable[str], folder: str) -> int:
-        """Look at the known files of the folder that is shown right now.
-
-        Files.GetFileDetails makes Kodi check the file on the share, and many of those calls next
-        to Kodi listing a share froze Kodi (navigating up a folder). So nothing happens while the
-        shown folder changes (the user is moving around): only a folder that is still shown at
-        the next look is checked, and at most POLL_BUDGET_S seconds per look.
-        Returns how many manual changes became events."""
-        here = self._key(folder)
-        settled = bool(here) and here == self.last_folder
-        self.last_folder = here
+    def poll(self, folder: str) -> int:
+        """Look at the folder that is shown right now; returns how many manual changes became
+        events."""
+        settled = is_file_folder(folder) and folder == self.last_folder
+        self.last_folder = folder
         if not settled:
             return 0
-        known = {path: to_media_id(path, self.mappings).id for path in own_paths}
-        known.update(self.applier.file_media)
-        shown = [path for path in known if self._key(path.rsplit("/", 1)[0]) == here]
-        started = self.applier.mono()
         changes = 0
-        for path in shown[-MAX_POLLED:]:
-            if self.applier.mono() - started > POLL_BUDGET_S:
-                break
-            count = self._playcount(path)
-            if count is None:
-                continue
-            last = self.applier.file_playcounts.get(path)
-            self.applier.file_playcounts[path] = count
+        counts = self.applier.file_playcounts
+        for path, count in self._files(folder).items():
+            last = counts.pop(path, None)
+            counts[path] = count
             if last is not None and last != count and self.manual.record_path(path, count):
                 changes += 1
+        while len(counts) > MAX_KNOWN_COUNTS:
+            counts.pop(next(iter(counts)))
         return changes

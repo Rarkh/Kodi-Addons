@@ -136,7 +136,7 @@ class Service:
         )
         engine.applied_done(events)
         if self.poller and not playing:
-            self.poller.poll(engine.local.own_paths, self.env.folder())
+            self.poller.poll(self.env.folder())
         engine.save()
         self._write_status(engine, config)
         self.log.flush()
