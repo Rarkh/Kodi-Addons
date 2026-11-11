@@ -55,7 +55,7 @@ continues after everything of its own it finds on the NAS.
 | `events`     | event and snapshot format, strict parsing                               |
 | `merge`      | merge and conflict rules                                                |
 | `backend`    | storage interface and the `xbmcvfs` backend (replaceable, e.g. HTTP)    |
-| `store`      | local cache in the profile (counter, queue, processed events, applied)  |
+| `store`      | local cache in the profile (`state.json` small, `cache.json` big)       |
 | `engine`     | queue/upload, reading, snapshots, clean-up, recovery                    |
 | `applier`    | writes the NAS state into Kodi's database, notices manual changes       |
 | `player`     | `xbmc.Player` adapter and the playback tracker                          |
@@ -139,6 +139,16 @@ written (Kodi then has no resume point for that file here). Written with
 `Files.SetFileDetails`, which has to be tested on real devices.
 
 Not in Phase 1: repository set-up, Docker/HTTP backend, series special cases beyond the path id.
+
+## Big libraries
+
+Thousands of media are meant to work: a sync round merges only the media that new events belong to
+(not the whole state), only the entries that changed are written to Kodi's database, the list of
+the Kodi library is reused for 5 minutes, and the cache is split: the small part (queue, counters)
+is written at once, the big part (all states, 8 MB for 10,000 media) only when it changed and at
+most once a minute, and when Kodi shuts down. Measured with 10,000 media: a round without news
+costs well under a millisecond (it was about 190 ms). A crash loses at most a minute of the big
+part; it is read again from the NAS.
 
 ## Settings
 

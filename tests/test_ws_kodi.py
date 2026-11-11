@@ -9,6 +9,7 @@ import pytest
 from test_ws_engine import Rig, record
 from watchsync.applier import (
     ECHO_WINDOW_S,
+    LIBRARY_INDEX_TTL_S,
     MAX_KNOWN_FILES,
     FilePoller,
     KodiApplier,
@@ -207,6 +208,44 @@ def test_files_outside_the_library_use_set_file_details_for_mapped_paths(kodi, c
     assert applier.apply([mapped], applied) == 1
     assert [c[1]["file"] for c in kodi.sets()] == ["nfs://nas/Media/Other/B.mkv"]
     assert applied["Other/B.mkv"]["ok"]
+
+
+def count(kodi, method: str) -> int:
+    return sum(1 for call in kodi.calls if call[0] == method)
+
+
+def test_the_library_list_is_reused_until_it_is_old(kodi, clock):
+    applier, _ = make_applier(kodi, clock)
+    applied: dict = {}
+    applier.apply([ev(position_s=1.0, ts="2026-11-10T12:00:01.000Z")], applied)
+    applier.apply([ev(position_s=2.0, ts="2026-11-10T12:00:02.000Z")], applied)
+    assert count(kodi, "VideoLibrary.GetMovies") == 1
+    clock[0] += LIBRARY_INDEX_TTL_S + 1
+    applier.apply([ev(position_s=3.0, ts="2026-11-10T12:00:03.000Z")], applied)
+    assert count(kodi, "VideoLibrary.GetMovies") == 2
+
+
+def test_a_miss_in_the_reused_list_reads_the_library_again_once(kodi, clock):
+    applier, _ = make_applier(kodi, clock)
+    applied: dict = {}
+    applier.apply([ev(ts="2026-11-10T12:00:01.000Z")], applied)
+    kodi.movies.append({"movieid": 9, "file": "nfs://nas/Media/Filme/New.mkv"})
+    new = ev(media="Filme/New.mkv", position_s=5.0, ts="2026-11-10T12:00:02.000Z")
+    also = ev(media="Filme/Newer.mkv", position_s=5.0, ts="2026-11-10T12:00:02.000Z")
+    assert applier.apply([new, also], applied) == 2  # the second one is no library item
+    assert count(kodi, "VideoLibrary.GetMovies") == 2  # read again once, not once per miss
+    assert any(c[1].get("movieid") == 9 for c in kodi.sets())
+
+
+def test_a_failed_write_drops_the_reused_list(kodi, clock):
+    applier, _ = make_applier(kodi, clock)
+    applied: dict = {}
+    applier.apply([ev(ts="2026-11-10T12:00:01.000Z")], applied)
+    kodi.fail.add("VideoLibrary.SetMovieDetails")
+    applier.apply([ev(position_s=2.0, ts="2026-11-10T12:00:02.000Z")], applied)
+    kodi.fail.clear()
+    applier.apply([ev(position_s=3.0, ts="2026-11-10T12:00:03.000Z")], applied)
+    assert count(kodi, "VideoLibrary.GetMovies") == 2
 
 
 def test_foreign_path_is_translated_with_what_this_device_played_itself(kodi, clock):

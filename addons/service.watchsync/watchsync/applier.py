@@ -26,6 +26,8 @@ Rpc = Callable[[str, Dict[str, Any]], Dict[str, Any]]
 Applied = Dict[str, Dict[str, Any]]
 
 MAX_POLLED = 25
+# The library list is reused this long (a miss or a failed write refreshes it at once)
+LIBRARY_INDEX_TTL_S = 300.0
 POLL_BUDGET_S = 2.0
 MAX_KNOWN_FILES = 300
 ECHO_WINDOW_S = 5.0
@@ -137,6 +139,9 @@ class KodiApplier:
         self.mono = mono
         self.log = log
         self.file_details_failed = False
+        # the library list (media id -> item, file name -> ids, complete) and when it was read
+        self._library: tuple[dict[str, tuple[Kind, int]], dict[str, list[str]], bool] | None = None
+        self._library_at = 0.0
         # files outside the library this add-on wrote to: path -> media id, path -> playcount
         self.file_media: dict[str, str] = {}
         self.file_playcounts: dict[str, int] = {}
@@ -220,30 +225,52 @@ class KodiApplier:
         if "playcount" in values:
             self.file_playcounts[path] = values["playcount"]
 
+    def _library_lists(
+        self, refresh: bool
+    ) -> tuple[dict[str, tuple[Kind, int]], dict[str, list[str]], bool, bool]:
+        """The library as media id -> item and file name -> ids, plus whether it is complete and
+        whether it was just read. A complete list is reused for LIBRARY_INDEX_TTL_S seconds
+        (reading a big library over JSON-RPC takes a while)."""
+        cached = self._library
+        if cached and not refresh and self.mono() - self._library_at < LIBRARY_INDEX_TTL_S:
+            return (*cached, False)
+        index, complete = self._library_index()
+        by_name: dict[str, list[str]] = {}
+        for media_id in index:
+            by_name.setdefault(file_name_key(media_id), []).append(media_id)
+        self._library = (index, by_name, complete) if complete else None
+        self._library_at = self.mono()
+        return index, by_name, complete, True
+
     def apply(
         self,
         events: Iterable[Event],
         applied: Applied,
         playing: str | None = None,
         own_paths: Iterable[str] = (),
+        known_ids: Iterable[str] | None = None,
     ) -> int:
         """Write entries newer than the applied state to Kodi; returns how many worked.
 
         The medium that is playing right now is skipped: its foreign events wait until playback
-        stopped and are then compared with the own stop event by the merge rules.
+        stopped and are then compared with the own stop event by the merge rules. known_ids are
+        all media ids this device has a state for (the events may be only the changed ones).
         """
         known = list(events)
         pending = [e for e in known if e.media_id != playing and not is_applied(e, applied)]
         if not pending:
             return 0
-        resolver = PathResolver(own_paths, [e.media_id for e in known])
-        index, complete = self._library_index()
-        by_name: dict[str, list[str]] = {}
-        for media_id in index:
-            by_name.setdefault(file_name_key(media_id), []).append(media_id)
+        resolver = PathResolver(
+            own_paths, known_ids if known_ids is not None else [e.media_id for e in known]
+        )
+        index, by_name, complete, fresh = self._library_lists(refresh=False)
         done = 0
         for event in pending:
             target = self._find_target(index, by_name, event.media_id)
+            if not target and not fresh:
+                # not in the reused list: new in the library? read it again once
+                index, by_name, complete, fresh = self._library_lists(refresh=True)
+                target = self._find_target(index, by_name, event.media_id)
             if not target and not complete:
                 continue  # try again at the next sync
             try:
@@ -254,6 +281,7 @@ class KodiApplier:
                     ok = self._apply_file(event, resolver)
             except RpcError as exc:
                 self.log(f"Could not apply {event.media_id}: {exc}", WARNING)
+                self._library = None  # the list may be out of date (item removed)
                 continue
             applied[event.media_id] = applied_entry(event, ok, "library" if target else "file")
             done += ok

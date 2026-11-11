@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import random
 from typing import Any
 
 import pytest
@@ -10,6 +11,7 @@ from watchsync import engine as engine_mod
 from watchsync.backend import Backend, BackendError
 from watchsync.engine import SyncEngine
 from watchsync.events import Event, encode_event
+from watchsync.merge import merge
 from watchsync.store import StateStore
 from ws_fakes import Clock, FakeVfs, make_backend, make_local
 
@@ -159,7 +161,7 @@ def test_corrupt_cached_state_entries_are_dropped(rig):
     a.sync()
     record(a)
     a.local.state["junk"] = {"v": 1}
-    a.save()
+    a.save(force=True)
     assert set(rig.device("a").state) == {"Filme/A.mkv"}
 
 
@@ -473,3 +475,152 @@ def test_own_paths_are_remembered_once_and_capped(rig):
     for number in range(305):
         a.remember_path(f"nfs://x/{number}.mkv")
     assert len(a.local.own_paths) == 300 and a.local.own_paths[-1] == "nfs://x/304.mkv"
+
+
+# ---- a big state: incremental merge, indexes, applying only what changed, cache writes -------
+
+
+def random_batch(rng: random.Random, step: int) -> list[Event]:
+    ids = [f"Show/S01/E{n:02d}.mkv" for n in range(12)]
+    fps = [None] + [f"s={n};h={n};" for n in range(5)]
+    return [
+        Event(
+            device=rng.choice("abc"),
+            seq=step * 10 + n,
+            ts=f"2026-11-10T12:{rng.randrange(60):02d}:{rng.randrange(60):02d}.000Z",
+            type=rng.choice(["progress", "watched", "unwatched", "reset"]),
+            media_id=rng.choice(ids),
+            position_s=float(rng.randrange(100)),
+            playcount=rng.randrange(3),
+            fp=rng.choice(fps),
+            unmapped=rng.random() < 0.3,
+        )
+        for n in range(rng.randrange(1, 4))
+    ]
+
+
+def test_merging_only_the_related_media_gives_the_same_state_as_merging_everything(rig):
+    rng = random.Random(7)
+    engine = rig.device("a")
+    reference: dict[str, Event] = {}
+    for step in range(300):
+        batch = random_batch(rng, step)
+        engine._apply(batch)
+        reference = merge([*reference.values(), *batch])
+        assert engine.state == reference
+        assert {k: e.to_dict() for k, e in reference.items()} == engine.local.state
+
+
+def test_lookup_finds_by_id_fingerprint_or_file_name_through_the_indexes(rig):
+    a = rig.device("a")
+    record(a, media="nfs://x/RAID5/Show/S01/E01.mkv", fp="s=1;h=1;", position_s=10.0)
+    assert a.lookup("nfs://x/RAID5/Show/S01/E01.mkv", None) is not None  # id
+    assert a.lookup("other-id", "s=1;h=1;").position_s == 10.0  # fingerprint
+    assert a.lookup("smb://y/RAID5/show/s01/E01.MKV", "s=9;h=9;").position_s == 10.0  # name
+    assert a.lookup("smb://y/RAID5/Other/S01/E01.mkv", None) is None
+    assert a.lookup("smb://y/E01.mkv", None) is None  # the file name alone never matches
+
+
+def test_an_entry_without_fingerprint_is_replaced_in_the_indexes(rig):
+    a = rig.device("a")
+    record(a, media="Show/S01/E01.mkv", position_s=1.0)
+    rig.clock.advance(1)
+    record(a, media="Show/S01/E01.mkv", position_s=2.0, fp="s=2;h=2;")
+    assert a.lookup("x", "s=2;h=2;").position_s == 2.0
+    rig.clock.advance(1)
+    record(a, media="Show/S01/E01.mkv", position_s=3.0, fp="s=3;h=3;")
+    assert a.lookup("x", "s=2;h=2;") is None and a.lookup("x", "s=3;h=3;").position_s == 3.0
+
+
+def test_only_changed_entries_wait_for_kodi_and_applied_ones_are_forgotten(rig):
+    a = rig.device("a")
+    b = rig.device("b")
+    a.sync()
+    b.sync()
+    record(a, media="Show/S01/E01.mkv")
+    b.sync()
+    waiting = b.unapplied_events()
+    assert [e.media_id for e in waiting] == ["Show/S01/E01.mkv"]
+    b.applied_done(waiting)  # nothing was applied: it keeps waiting
+    assert b.unapplied == {"Show/S01/E01.mkv"}
+    b.local.applied["Show/S01/E01.mkv"] = {"ts": waiting[0].ts, "ok": True}
+    b.applied_done(waiting)
+    assert b.unapplied == set() and b.unapplied_events() == []
+    b.sync()  # nothing new: nothing waits
+    assert b.unapplied_events() == []
+    b.unapplied.add("gone")  # an id that is not in the state any more is ignored
+    assert b.unapplied_events() == []
+
+
+def test_everything_in_the_cache_waits_for_kodi_after_a_start(rig):
+    a = rig.device("a")
+    a.sync()
+    record(a)
+    a.save(force=True)
+    assert rig.device("a").unapplied == {"Filme/A.mkv"}
+
+
+def test_a_rebuild_forgets_what_waited_and_reads_everything_again(rig):
+    a = rig.device("a")
+    record(a)
+    a.rebuild()
+    assert set(a.state) == {"Filme/A.mkv"} and a.unapplied == {"Filme/A.mkv"}
+    assert a.lookup("Filme/A.mkv", None) is not None
+
+
+def cache_text(rig: Rig, name: str, file: str) -> str:
+    return rig.vfs.get(f"special://profile/{name}/{file}")
+
+
+def test_the_big_cache_is_written_rarely_the_small_one_always(rig):
+    a = rig.device("a")
+    a.sync()
+    first = cache_text(rig, "a", "cache.json")
+    assert "Filme/A.mkv" not in first
+    record(a)
+    rig.clock.advance(5)
+    a.save()
+    assert cache_text(rig, "a", "cache.json") == first  # not due yet: the big part is as before
+    assert json.loads(cache_text(rig, "a", "state.json"))["next_seq"] == 2  # the small part is
+    rig.clock.advance(60)
+    a.save()
+    assert "Filme/A.mkv" in cache_text(rig, "a", "cache.json")
+
+
+def test_nothing_is_written_to_the_big_cache_when_nothing_changed(rig):
+    a = rig.device("a")
+    a.sync()
+    rig.vfs.files.pop("special://profile/a/cache.json")
+    rig.clock.advance(120)
+    a.save()
+    assert "special://profile/a/cache.json" not in rig.vfs.files
+
+
+def test_a_forced_save_writes_the_big_cache_at_once(rig):
+    a = rig.device("a")
+    a.sync()
+    record(a)
+    a.save(force=True)
+    assert "Filme/A.mkv" in cache_text(rig, "a", "cache.json")
+
+
+def test_a_cache_from_an_older_version_in_one_file_is_still_read(rig):
+    a = rig.device("a")
+    record(a)
+    old = json.loads(cache_text(rig, "a", "state.json"))
+    old.update(json.loads(cache_text(rig, "a", "cache.json")))
+    rig.vfs.files.pop("special://profile/a/cache.json")
+    rig.vfs.put("special://profile/a/state.json", json.dumps(old))
+    assert set(rig.device("a").state) == {"Filme/A.mkv"}
+
+
+def test_unreadable_cache_files_start_empty_and_a_broken_queue_entry_is_kept(rig):
+    a = rig.device("a")
+    a.sync()
+    rig.vfs.put("special://profile/a/cache.json", "{not json")
+    rig.vfs.put("special://profile/a/state.json", "[]")
+    assert rig.device("a").state == {}
+    a.local.queue.append({"v": 1, "junk": True})
+    a.save(force=True)
+    again = rig.device("a")
+    assert again.local.queue == [{"v": 1, "junk": True}] and again.state == {}
