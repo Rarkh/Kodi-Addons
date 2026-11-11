@@ -420,6 +420,8 @@ class FilePoller:
         self.last_folder = ""
         self.steady = 0
         self.baselined = ""
+        # told every file seen in a shown folder (the engine learns the paths it cannot translate)
+        self.learn: Callable[[str], bool] = lambda path: False
 
     def _items(self, folder: str) -> tuple[dict[str, int], list[str]]:
         """(path -> playcount of the files, paths of the sub folders) of a folder; nothing if Kodi
@@ -445,6 +447,7 @@ class FilePoller:
         changes = 0
         counts = self.applier.file_playcounts
         for path, count in self._items(folder)[0].items():
+            self.learn(path)
             last = counts.pop(path, None)
             counts[path] = count
             if last is not None and last != count and self.manual.record_path(path, count):

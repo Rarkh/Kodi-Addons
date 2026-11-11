@@ -1003,3 +1003,12 @@ def test_player_callback_errors_are_logged_not_raised(player):
 
 def test_current_dataclass_defaults():
     assert not Current("m", False, None, 1.0, 0.0, 0).watched
+
+
+def test_the_poller_tells_every_listed_file_to_learn(kodi, clock):
+    poller, _, _ = poller_with(kodi, clock)
+    seen: list[str] = []
+    poller.learn = lambda path: seen.append(path) or False
+    show(kodi, E01=0, E02=1)
+    poller.check(FOLDER)
+    assert seen == [FOLDER + "E01.mkv", FOLDER + "E02.mkv"]

@@ -641,3 +641,20 @@ def test_unreadable_cache_files_start_empty_and_a_broken_queue_entry_is_kept(rig
     again = rig.device("a")
     assert again.local.queue == [{"v": 1, "junk": True}]
     assert again.state == {}
+
+
+def test_a_listed_file_teaches_the_path_and_retries_what_had_no_local_path(rig):
+    tablet, phone = rig.device("tablet"), rig.device("phone")
+    tablet.sync()
+    phone.sync()
+    record(tablet, "/storage/KODI/SERIES/Show/S01/E01.mkv", unmapped=True)
+    phone.sync()
+    tablet_id = "/storage/KODI/SERIES/Show/S01/E01.mkv"
+    phone.local.applied[tablet_id] = {"ts": "2026-11-10T12:00:00Z", "ok": False}
+    phone.unapplied.clear()
+    assert not phone.learn_path("nfs://nas/Other/Show/S02/E09.mkv")  # nothing known by that name
+    assert phone.learn_path("nfs://nas/SERIES-USB/Show/S01/E01.mkv")
+    assert phone.local.own_paths == ["nfs://nas/SERIES-USB/Show/S01/E01.mkv"]
+    assert "/storage/KODI/SERIES/Show/S01/E01.mkv" in phone.unapplied
+    assert "/storage/KODI/SERIES/Show/S01/E01.mkv" not in phone.local.applied
+    assert not phone.learn_path("nfs://nas/SERIES-USB/Show/S01/E01.mkv")  # translatable now

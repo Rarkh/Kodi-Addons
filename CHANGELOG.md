@@ -23,6 +23,13 @@ Every add-on in this repository has its own version and uses
 - Changes not yet released are collected under `[Unreleased]`. Entries name the add-on.
 
 ## [Unreleased]
+### Fixed
+- `service.watchsync` 0.3.1 (test build): a device could not take over the state of files that another
+  device plays from a location it cannot translate (e.g. a tablet's local `/storage/...` path seen by
+  a phone that only plays from the NAS): nothing was written and the entry was never tried again.
+  Files seen in a shown folder now teach the path (one per location), and entries without a
+  local path are tried again after that.
+
 ### Added
 - `repository.rarkh.test` 1.0.0: repository add-on of a test channel (branch `dev`, folder
   `repo-test/`). `tools/build_repo.py --channel test --only <id>` builds it with just the named
