@@ -191,10 +191,23 @@ msgctxt "#30075"
 msgid "offline"
 msgstr "offline"
 
-msgctxt "#30076"
-msgid "Kodi is checking its repositories now (installed: {0}). If a newer version exists, Kodi installs it by itself when automatic updates are on for this add-on; otherwise open the add-on information and choose Update."
-msgstr "Kodi is checking its repositories now (installed: {0}). If a newer version exists, Kodi installs it by itself when automatic updates are on for this add-on; otherwise open the add-on information and choose Update."
 
 msgctxt "#30077"
 msgid "Write test in {0}"
 msgstr "Write test in {0}"
+
+msgctxt "#30076"
+msgid "Installed: {0}\nOffered by the repository: {1}\n\n{2}"
+msgstr "Installed: {0}\nOffered by the repository: {1}\n\n{2}"
+
+msgctxt "#30078"
+msgid "You have the newest version."
+msgstr "You have the newest version."
+
+msgctxt "#30079"
+msgid "A newer version is available. Kodi installs it by itself when automatic updates are on; otherwise open the add-on information and choose Update, or restart Kodi."
+msgstr "A newer version is available. Kodi installs it by itself when automatic updates are on; otherwise open the add-on information and choose Update, or restart Kodi."
+
+msgctxt "#30081"
+msgid "The repository could not be read: {0}"
+msgstr "The repository could not be read: {0}"

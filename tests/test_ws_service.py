@@ -288,13 +288,19 @@ class MenuDialog:
 
 
 class MenuAddon(FakeAddon):
+    FORMATS = {
+        30054: "S30054:{0}",
+        30070: "S30070:{0}",
+        30076: "S30076:{0}:{1}:{2}",
+        30077: "S30077:{0}",
+        30081: "S30081:{0}",
+    }
+
     def getAddonInfo(self, key):  # noqa: N802
-        return "9.9.9"
+        return {"version": "9.9.9", "id": "service.watchsync"}[key]
 
     def getLocalizedString(self, string_id):  # noqa: N802
-        return (
-            f"S{string_id}:{{0}}" if string_id in (30054, 30070, 30076, 30077) else f"S{string_id}"
-        )
+        return self.FORMATS.get(string_id, f"S{string_id}")
 
 
 @pytest.fixture
@@ -339,10 +345,24 @@ def test_script_action_runs_directly(ui):
     assert ui.built == [runtime.NOTIFY_SYNC] and ui.calls[-1][0] == "note"
 
 
-def test_check_updates_refreshes_the_repositories(ui):
+@pytest.mark.parametrize(
+    ("offer", "expected"),
+    [
+        (("10.0.0", None), "S30076:9.9.9:10.0.0:S30079"),
+        (("9.9.9", None), "S30076:9.9.9:9.9.9:S30078"),
+        ((None, "no network"), "S30076:9.9.9:-:S30081:no network"),
+        ((None, None), "S30076:9.9.9:-:S30081:-"),
+    ],
+)
+def test_check_updates_compares_versions_and_refreshes_the_repositories(
+    ui, monkeypatch, offer, expected
+):
+    asked: list[str] = []
+    monkeypatch.setattr(menu, "newest_offer", lambda addon_id: asked.append(addon_id) or offer)
     menu.run(["x", "update"])
+    assert asked == ["service.watchsync"]
     assert ui.built == [menu.REFRESH_REPOS]
-    assert ui.calls[-1] == ("ok", "S30076:9.9.9")
+    assert ui.calls[-1] == ("ok", expected)
 
 
 def test_diagnose_reports_every_write_case(ui):

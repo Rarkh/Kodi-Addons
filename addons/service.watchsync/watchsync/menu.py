@@ -14,6 +14,7 @@ from .config import SETTING_MAPPINGS, load_config
 from .logger import LOG_FILE
 from .mediaid import ARROW, Mapping, format_mappings, parse_mappings
 from .runtime import NOTIFY_REBUILD, NOTIFY_SYNC, PROFILE, STATUS_FILE
+from .update import newest_offer, version_key
 
 ADDON = xbmcaddon.Addon()
 HEADING = ADDON.getAddonInfo("name")
@@ -42,9 +43,20 @@ def rebuild_cache() -> None:
 
 
 def check_updates() -> None:
-    """Make Kodi look at its repositories now; an available update is then offered or installed."""
+    """Show installed and offered version and make Kodi refresh its repositories.
+
+    Installing stays with Kodi (automatic updates, a Kodi restart, or Update in the add-on
+    information); the dialog says whether a newer version is there at all."""
     xbmc.executebuiltin(REFRESH_REPOS)
-    xbmcgui.Dialog().ok(HEADING, tr(30076, ADDON.getAddonInfo("version")))
+    installed = ADDON.getAddonInfo("version")
+    offered, error = newest_offer(ADDON.getAddonInfo("id"))
+    if offered is None:
+        state = tr(30081, error or "-")
+    elif version_key(offered) > version_key(installed):
+        state = tr(30079)
+    else:
+        state = tr(30078)
+    xbmcgui.Dialog().ok(HEADING, tr(30076, installed, offered or "-", state))
 
 
 def show_status() -> None:
