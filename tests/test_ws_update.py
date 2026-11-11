@@ -24,6 +24,10 @@ def pages(mapping: dict[str, str]) -> Callable[[str], str]:
 def test_version_key_compares_numbers_not_text():
     assert update.version_key("0.2.10") > update.version_key("0.2.9")
     assert update.version_key("1.0.0-test") == (1, 0, 0)
+    # Kodi: 0.3.4-rc2 is higher than 0.3.4 and rc10 higher than rc2, but lower than 0.3.5
+    assert update.version_key("0.3.4-rc2") > update.version_key("0.3.4")
+    assert update.version_key("0.3.4-rc10") > update.version_key("0.3.4-rc2")
+    assert update.version_key("0.3.5") > update.version_key("0.3.4-rc10")
 
 
 def test_offered_version_takes_the_highest_listing():

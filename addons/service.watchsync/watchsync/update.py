@@ -25,7 +25,8 @@ def fetch_text(url: str) -> str:
 
 
 def version_key(version: str) -> tuple[int, ...]:
-    """1.2.3 -> (1, 2, 3); suffixes such as -test are ignored."""
+    """1.2.3 -> (1, 2, 3); 1.2.3-rc4 -> (1, 2, 3, 4). Like Kodi, a test build -rcN ranks above
+    the release of the same number and below the next release."""
     return tuple(int(number) for number in re.findall(r"\d+", version))
 
 

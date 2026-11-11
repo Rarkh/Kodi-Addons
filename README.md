@@ -77,7 +77,7 @@ untouched.
 One-time setup per test device:
 
 1. Download the ZIP (or put it on the NAS and install from there):
-   <https://raw.githubusercontent.com/Rarkh/Kodi-Addons/dev/repo-test/zips/repository.rarkh.test/repository.rarkh.test-1.0.0.zip>
+   <https://raw.githubusercontent.com/Rarkh/Kodi-Addons/dev/repo-test/zips/repository.rarkh.test/repository.rarkh.test-1.0.0-rc1.zip> (the number after `-rc` is the newest build; see the folder `repo-test/zips/repository.rarkh.test/`)
 2. *Settings → Add-ons → Install from zip file* and pick it.
 3. *Install from repository → Rarkh Repository (Test)* and install the add-on. Updates follow
    automatically.
@@ -85,6 +85,13 @@ One-time setup per test device:
 The test channel contains only the add-ons you name with `--only` (plus the test repository
 itself), so no add-on id is offered by both channels. Both repositories can be installed on one
 device; keep an add-on that is under test out of `repository.rarkh` until it is released.
+
+Everything in the test channel is marked as a test: the build adds `-rcN` to the version
+(`0.3.4-rc1`, `0.3.4-rc2`, ... counting up, because Kodi only updates to a higher version), the
+name gets "(Test)" and the icon a red TEST band (made with Pillow; an add-on without an icon gets one
+made from its name). `addons/` stays clean: `addon.xml` holds the number of the next release.
+Kodi ranks `0.3.4-rc2` above `0.3.4`, so a device on a test build is offered the release only
+with the next number (`0.3.5`) or after a reinstall.
 
 Test deploy (the branch `dev` must be created once with `git switch -c dev`):
 

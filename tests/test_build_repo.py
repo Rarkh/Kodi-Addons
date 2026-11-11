@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
 import build_repo as br
 import pytest
+from PIL import Image
 
 SCRIPT = Path(__file__).resolve().parent.parent / "tools" / "build_repo.py"
 
@@ -175,7 +177,7 @@ def test_test_channel_builds_only_the_test_repo_and_chosen_addons(
     data = (out / "addons.xml").read_bytes()
     assert [a.get("id") for a in ET.fromstring(data)] == ["plugin.b", "repository.rarkh.test"]
     assert (out / "addons.xml.md5").read_text(encoding="ascii") == hashlib.md5(data).hexdigest()
-    assert (out / "zips" / "plugin.b" / "plugin.b-1.0.0.zip").is_file()
+    assert (out / "zips" / "plugin.b" / "plugin.b-1.0.0-rc1.zip").is_file()
     assert not (out / "zips" / "plugin.a").exists()
     assert not stale.exists()
     assert not (repo / "repo").exists()
@@ -223,3 +225,66 @@ def test_script_runs_as_command_line_tool(tmp_path: Path, monkeypatch: pytest.Mo
         exec(code, {"__name__": "__main__", "__file__": str(fake_file)})
     assert exit_info.value.code == 0
     assert (tmp_path / "repo" / "addons.xml").is_file()
+
+
+def test_rc_version_counts_up_for_the_same_base_and_restarts_for_a_new_one():
+    assert br.rc_version("0.3.4", None) == "0.3.4-rc1"
+    assert br.rc_version("0.3.4", "0.3.4-rc1") == "0.3.4-rc2"
+    assert br.rc_version("0.3.4", "0.3.4-rc9") == "0.3.4-rc10"
+    assert br.rc_version("0.3.5", "0.3.4-rc7") == "0.3.5-rc1"
+    assert br.rc_version("0.3.4", "0.3.4") == "0.3.4-rc1"
+
+
+def test_retag_changes_only_version_and_name_of_the_addon_tag():
+    head = '<?xml version="1.0"?>\n<addon id="a" name="Old" version="1.0.0">\n'
+    text = head + '<import version="2"/>\n</addon>\n'
+    out = br.retag(text, "1.0.1-rc1", "Old (Test)")
+    assert '<addon id="a" name="Old (Test)" version="1.0.1-rc1">' in out
+    assert '<import version="2"/>' in out
+
+
+def test_the_test_channel_marks_version_name_and_icon(repo: Path):
+    plain = write_addon(repo / "addons", "plugin.b", "1.0.0")
+    Image.new("RGBA", (64, 64), (0, 128, 0, 255)).save(plain / "icon.png")
+    named = write_addon(repo / "addons", "repository.rarkh.test", "1.0.0")
+    (named / "addon.xml").write_text(
+        '<addon id="repository.rarkh.test" version="1.0.0" name="R (Test)"/>'
+    )
+    assert br.main(["--channel", "test", "--only", "plugin.b"]) == 0
+    out = repo / "repo-test"
+    entries = {a.get("id"): a for a in ET.fromstring((out / "addons.xml").read_bytes())}
+    assert entries["plugin.b"].get("version") == "1.0.0-rc1"
+    assert entries["plugin.b"].get("name") == "X (Test)"
+    assert entries["repository.rarkh.test"].get("name") == "R (Test)"  # not marked twice
+    with zipfile.ZipFile(out / "zips" / "plugin.b" / "plugin.b-1.0.0-rc1.zip") as zf:
+        inside = zf.read("plugin.b/addon.xml").decode()
+        icon = zf.read("plugin.b/icon.png")
+    assert 'version="1.0.0-rc1"' in inside
+    assert 'name="X (Test)"' in inside
+    marked = Image.open(io.BytesIO(icon)).convert("RGB")
+    assert marked.getpixel((256, 400)) == (200, 30, 30)  # the red band
+    assert marked.getpixel((5, 5)) == (0, 128, 0)  # the add-on's own icon
+    assert (out / "zips" / "plugin.b" / "icon.png").read_bytes() == icon
+    assert (plain / "icon.png").read_bytes() != icon  # the source stays clean
+    assert 'version="1.0.0"' in (plain / "addon.xml").read_text()
+    # a second build counts up
+    assert br.main(["--channel", "test", "--only", "plugin.b"]) == 0
+    assert (out / "zips" / "plugin.b" / "plugin.b-1.0.0-rc2.zip").is_file()
+
+
+def test_an_addon_without_icon_gets_one_made_from_its_name(tmp_path: Path):
+    folder = write_addon(tmp_path, "plugin.x")
+    icon = Image.open(io.BytesIO(br.test_icon(folder, "Name (Test)"))).convert("RGB")
+    assert icon.size == (br.ICON_SIZE, br.ICON_SIZE)
+    assert icon.getpixel((5, 5)) == (32, 52, 84)
+    assert icon.getpixel((256, 400)) == (200, 30, 30)
+    plain = Image.open(io.BytesIO(br.test_icon(folder, "Name"))).convert("RGB")
+    assert plain.getpixel((256, 400)) == (200, 30, 30)
+
+
+def test_previous_versions_reads_an_existing_index(tmp_path: Path):
+    assert br.previous_versions(tmp_path) == {}
+    (tmp_path / "addons.xml").write_text(
+        '<?xml version="1.0"?>\n<addons><addon id="a" version="1.0.0-rc3"/></addons>'
+    )
+    assert br.previous_versions(tmp_path) == {"a": "1.0.0-rc3"}

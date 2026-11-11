@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <addons>
-<addon id="repository.rarkh.test" name="Rarkh Repository (Test)" version="1.0.0" provider-name="Rarkh">
+<addon id="repository.rarkh.test" name="Rarkh Repository (Test)" version="1.0.0-rc1" provider-name="Rarkh">
     <requires>
         <import addon="xbmc.addon" version="12.0.0"/>
     </requires>
@@ -24,7 +24,7 @@
         </assets>
     </extension>
 </addon>
-<addon id="service.watchsync" name="WatchSync" version="0.3.3" provider-name="Rarkh">
+<addon id="service.watchsync" name="WatchSync (Test)" version="0.3.4-rc1" provider-name="Rarkh">
     <requires>
         <import addon="xbmc.python" version="3.0.0"/>
     </requires>

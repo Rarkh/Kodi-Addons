@@ -35,6 +35,12 @@ Every add-on in this repository has its own version and uses
   file per path, so the local copy in the library and the same file played from the share are
   separate entries; only the library one was written, so the share showed no resume point.
 
+### Changed
+- Test channel (`tools/build_repo.py --channel test`): every package is marked as a test. The version
+  gets `-rcN` (counting up per build of the same number, e.g. `0.3.4-rc1`), the name `(Test)`, the
+  icon a red TEST band (Pillow; an add-on without an icon gets one made from its name). The sources in
+  `addons/` stay unchanged.
+
 ### Added
 - `repository.rarkh.test` 1.0.0: repository add-on of a test channel (branch `dev`, folder
   `repo-test/`). `tools/build_repo.py --channel test --only <id>` builds it with just the named
