@@ -45,6 +45,7 @@ class Setup:
         self.kodi = FakeKodi()
         self.folder = ""  # the folder shown in the file view
         self.menu_open = False  # a context menu is open
+        self.selected: tuple[str, bool] = ("", False)  # the focused item and whether a folder
         self.sink: list[tuple[str, int]] = []
         values: dict[str, Any] = {
             "storage_path": NAS,
@@ -67,6 +68,7 @@ class Setup:
             friendly_name=lambda: "Kodi Büro",
             folder=lambda: self.folder,
             menu_open=lambda: self.menu_open,
+            selected=lambda: self.selected,
             opener=lambda path: (_ for _ in ()).throw(OSError("no")),
             make_backend=lambda path: VfsBackend(path, LAYOUT, self.rig.vfs),
         )
@@ -172,6 +174,31 @@ def test_a_closing_context_menu_makes_the_service_look_at_the_shown_folder_at_on
     setup.menu_open = False
     setup.service.step()  # the menu closed: looked at once
     assert engine_of(setup.service).state["Show/S01/E01.mkv"].type == "watched"
+
+
+def test_marking_a_folder_in_the_context_menu_sends_the_files_below_it():
+    setup = Setup()
+    settled_in_the_folder(setup)
+    below = "nfs://nas/Media/Show/S01/Season 02/"
+    setup.kodi.directories[below] = [
+        {"file": below + "E01.mkv", "filetype": "file", "playcount": 1},
+        {"file": below + "E02.mkv", "filetype": "file", "playcount": 1},
+    ]
+    setup.selected = (below, True)  # the folder is focused, then the menu opens ...
+    setup.service.step()
+    setup.menu_open = True
+    setup.selected = ("the menu's own item", False)  # ... and ListItem is the menu's now
+    setup.service.step()
+    setup.menu_open = False
+    setup.service.step()  # closed: the folder that was focused is walked
+    state = engine_of(setup.service).state
+    assert state["Show/S01/Season 02/E01.mkv"].type == "watched"
+    assert state["Show/S01/Season 02/E02.mkv"].type == "watched"
+    setup.service.step()  # the second look, a second later (the database may lag)
+    setup.kodi.calls.clear()
+    for _ in range(3):  # the looks are over; nothing keeps walking the folder
+        setup.service.step()
+    assert not [c for c in setup.kodi.calls if c[1].get("directory") == below]
 
 
 def test_a_notification_from_kodi_makes_the_service_look_at_the_shown_folder_at_once():

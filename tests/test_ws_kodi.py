@@ -11,6 +11,8 @@ from watchsync.applier import (
     ECHO_WINDOW_S,
     LIBRARY_INDEX_TTL_S,
     MAX_KNOWN_FILES,
+    MAX_TREE_DEPTH,
+    MAX_TREE_LISTINGS,
     SETTLE_STEPS,
     FilePoller,
     KodiApplier,
@@ -541,6 +543,84 @@ def test_only_the_newest_playcounts_are_remembered(kodi, clock, monkeypatch):
     show(kodi, A=0, B=0, C=0, D=0, E=0)
     _, _, applier = poller_with(kodi, clock)
     assert list(applier.file_playcounts) == [FOLDER + n + ".mkv" for n in "CDE"]
+
+
+def season(kodi, folder: str, **playcounts: int) -> str:
+    """A folder with files and a sub folder entry; returns the folder."""
+    show(kodi, folder=folder, **playcounts)
+    return folder
+
+
+def test_a_marked_folder_sends_the_state_of_all_files_below_it(kodi, clock):
+    poller, engine, _ = poller_with(kodi, clock)
+    root_folder = "nfs://nas/Media/Show/"
+    season(kodi, root_folder, Extra=1)
+    kodi.directories[root_folder].append(
+        {"file": root_folder + "S01/", "filetype": "directory", "playcount": 0}
+    )
+    season(kodi, root_folder + "S01/", E01=1, E02=1, E03=0)
+    kodi.directories[root_folder + "S01/"].append(
+        {"file": root_folder + "S01/Specials/", "filetype": "directory"}
+    )
+    season(kodi, root_folder + "S01/Specials/", Sp1=1)
+    assert poller.sync_tree(root_folder.rstrip("/")) == 4  # E03 is unknown and not watched
+    sent = sorted((a[0], a[1], a[4]) for a, _ in engine.recorded)
+    assert sent == [
+        ("Show/Extra.mkv", "watched", 1),
+        ("Show/S01/E01.mkv", "watched", 1),
+        ("Show/S01/E02.mkv", "watched", 1),
+        ("Show/S01/Specials/Sp1.mkv", "watched", 1),
+    ]
+
+
+def test_an_unmarked_folder_sends_unwatched_for_files_the_nas_knows_as_watched(kodi, clock):
+    known = ev(media="Show/S01/E01.mkv", kind="watched", playcount=1)
+    poller, engine, _ = poller_with(kodi, clock, known=known)
+    season(kodi, "nfs://nas/Media/Show/S01/", E01=0)
+    assert poller.sync_tree("nfs://nas/Media/Show/S01/") == 1
+    assert [(a[1], a[4]) for a, _ in engine.recorded] == [("unwatched", 0)]
+
+
+class OnlyE01Known(FakeEngine):
+    def lookup(self, media_id: str, fp: str | None) -> Event | None:
+        return self.known if media_id == "Show/S01/E01.mkv" else None
+
+
+def test_a_marked_folder_does_not_resend_what_is_known_and_is_not_deeper_than_allowed(kodi, clock):
+    poller, _, applier = poller_with(kodi, clock)
+    engine = OnlyE01Known(ev(media="Show/S01/E01.mkv", kind="watched", playcount=1))
+    poller.manual.engine = engine
+    folder = "nfs://nas/Media/Show/"
+    for depth in range(MAX_TREE_DEPTH + 3):
+        here = folder + "d/" * depth
+        season(kodi, here, **{f"F{depth}": 1})
+        kodi.directories[here].append({"file": here + "d/", "filetype": "directory"})
+    season(kodi, folder + "S01/", E01=1)
+    kodi.directories[folder].append({"file": folder + "S01/", "filetype": "directory"})
+    poller.sync_tree(folder)
+    names = sorted(a[0] for a, _ in engine.recorded)
+    assert "Show/S01/E01.mkv" not in names  # the NAS knows it as watched already
+    assert len(names) == MAX_TREE_DEPTH + 1  # the levels 0 .. MAX_TREE_DEPTH, no deeper
+    assert applier.file_playcounts[folder + "S01/E01.mkv"] == 1
+
+
+def test_a_marked_folder_lists_at_most_a_limited_number_of_folders(kodi, clock):
+    poller, _, _ = poller_with(kodi, clock)
+    top = "nfs://nas/Media/Many/"
+    kodi.directories[top] = [
+        {"file": f"{top}s{n}/", "filetype": "directory"} for n in range(MAX_TREE_LISTINGS + 20)
+    ]
+    for n in range(MAX_TREE_LISTINGS + 20):
+        kodi.directories[f"{top}s{n}/"] = []
+    poller.sync_tree(top)
+    assert len(asked(kodi)) <= MAX_TREE_LISTINGS + 1  # the baseline look of the fixture is one
+
+
+def test_only_file_folders_are_walked_when_a_folder_was_marked(kodi, clock):
+    poller, _, _ = poller_with(kodi, clock)
+    before = len(asked(kodi))
+    assert poller.sync_tree("videodb://tvshows/titles/") == 0 and poller.sync_tree("") == 0
+    assert len(asked(kodi)) == before
 
 
 def test_a_reset_gives_no_playcount_baseline(kodi, clock):

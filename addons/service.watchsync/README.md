@@ -132,6 +132,13 @@ without a context menu is found by the look at every sync (30 s). Many requests 
 listing a share once froze Kodi (navigating up a folder), so nothing is asked while the shown
 folder changes or while a video plays.
 
+**Marking a whole folder** (context menu on a folder): Kodi sets the playcount of all files below it.
+The add-on remembers which item was focused before the menu opened; when the menu closes, that
+folder is walked (at most 3 levels and 40 folders deep, one listing of the share each) and the
+state of every file that differs from what this device knows is sent: watched files that nobody
+knew, and files that are unwatched now but known as watched. Unwatched files nobody knew are not
+sent. There is no baseline for this: the NAS state is the comparison.
+
 **Flags for files outside the library** (watched mark, "in progress" mark in file lists): Kodi keeps
 them per path, so the add-on needs the path *this* device uses. It learns it from the files this
 device played itself: if another device has an event for the same file under another location

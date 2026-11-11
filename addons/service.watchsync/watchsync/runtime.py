@@ -70,6 +70,7 @@ class Env:
     friendly_name: Callable[[], str]
     folder: Callable[[], str]
     menu_open: Callable[[], bool]
+    selected: Callable[[], tuple[str, bool]]
     opener: Callable[[str], Any]
     make_backend: Callable[[str], Backend]
 
@@ -86,6 +87,8 @@ class Service:
         self.manual: ManualChanges | None = None
         self.poller: FilePoller | None = None
         self._menu_was_open = False
+        self._selected: tuple[str, bool] = ("", False)  # the item before a menu opened
+        self._marked_folder = ""  # a folder a context menu may just have marked
         self._looks = 0  # looks at the shown folder still to do after a context menu closed
         self.next_sync = 0.0
         self.next_save = 0.0
@@ -190,10 +193,18 @@ class Service:
         open_now = self.env.menu_open()
         if self._menu_was_open and not open_now:
             self._looks = LOOKS_AFTER_MARK
+            path, is_folder = self._selected  # what was focused before the menu opened
+            self._marked_folder = path if is_folder else ""
+        if not open_now:
+            self._selected = self.env.selected()  # while the menu is open, ListItem is the menu's
         self._menu_was_open = open_now
         if self._looks:
             self._looks -= 1
             self.poller.check(folder)
+            if self._marked_folder:
+                self.poller.sync_tree(self._marked_folder)
+            if not self._looks:
+                self._marked_folder = ""
 
     def run(self) -> None:
         self.log("Service started")
@@ -222,6 +233,10 @@ def run_service() -> None:
         friendly_name=lambda: xbmc.getInfoLabel("System.FriendlyName"),
         folder=lambda: xbmc.getInfoLabel("Container.FolderPath"),
         menu_open=lambda: xbmc.getCondVisibility("Window.IsActive(contextmenu)"),
+        selected=lambda: (
+            xbmc.getInfoLabel("ListItem.FileNameAndPath"),
+            xbmc.getCondVisibility("ListItem.IsFolder"),
+        ),
         opener=xbmcvfs.File,
         make_backend=VfsBackend,
     )

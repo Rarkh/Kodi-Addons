@@ -30,6 +30,9 @@ LIBRARY_INDEX_TTL_S = 300.0
 MAX_KNOWN_COUNTS = 5000
 # Service steps (seconds) a folder must stay shown before it is looked at
 SETTLE_STEPS = 3
+# A marked folder: how deep and how many folders are listed (each is a listing of the share)
+MAX_TREE_DEPTH = 3
+MAX_TREE_LISTINGS = 40
 MAX_KNOWN_FILES = 300
 ECHO_WINDOW_S = 5.0
 
@@ -346,12 +349,16 @@ class ManualChanges:
             return False
         return self.record_path(path, playcount)
 
-    def record_path(self, path: str, playcount: int) -> bool:
-        """Create the watched/unwatched event for a file whose playcount was changed by hand."""
+    def record_path(self, path: str, playcount: int, skip_unknown_unwatched: bool = False) -> bool:
+        """Create the watched/unwatched event for a file whose playcount was changed by hand.
+
+        skip_unknown_unwatched: a file nobody knows and that is not watched is nothing to send."""
         ref = to_media_id(path, self.mappings)
         known = self.engine.lookup(ref.id, None)
         if known and known.playcount == playcount:
             return False  # Kodi writes the same value at the end of a playback
+        if not known and playcount == 0 and skip_unknown_unwatched:
+            return False
         self.engine.record(
             ref.id,
             "watched" if playcount > 0 else "unwatched",
@@ -394,29 +401,30 @@ class FilePoller:
         self.steady = 0
         self.baselined = ""
 
-    def _files(self, folder: str) -> dict[str, int]:
-        """path -> playcount of the files in a folder (nothing if Kodi cannot list it)."""
+    def _items(self, folder: str) -> tuple[dict[str, int], list[str]]:
+        """(path -> playcount of the files, paths of the sub folders) of a folder; nothing if Kodi
+        cannot list it."""
         params = {"directory": folder, "media": "video", "properties": ["playcount"]}
         try:
             items = self.rpc("Files.GetDirectory", params).get("files", [])
         except RpcError:
-            return {}
-        found: dict[str, int] = {}
+            return {}, []
+        files: dict[str, int] = {}
+        folders: list[str] = []
         for item in items:
             path, count = item.get("file"), item.get("playcount")
-            if (
-                item.get("filetype") == "file"
-                and isinstance(path, str)
-                and isinstance(count, int)
-                and not isinstance(count, bool)
-            ):
-                found[path] = count
-        return found
+            if not isinstance(path, str):
+                continue
+            if item.get("filetype") == "directory":
+                folders.append(path)
+            elif isinstance(count, int) and not isinstance(count, bool):
+                files[path] = count
+        return files, folders
 
     def _compare(self, folder: str) -> int:
         changes = 0
         counts = self.applier.file_playcounts
-        for path, count in self._files(folder).items():
+        for path, count in self._items(folder)[0].items():
             last = counts.pop(path, None)
             counts[path] = count
             if last is not None and last != count and self.manual.record_path(path, count):
@@ -442,3 +450,26 @@ class FilePoller:
         if not self.baselined or folder != self.baselined or folder != self.last_folder:
             return 0
         return self._compare(folder)
+
+    def sync_tree(self, folder: str) -> int:
+        """A folder was marked (all files in it, also in sub folders, got the same playcount):
+        send the state of its files that differs from what this device knows. Unlike a single
+        file this has no baseline: the NAS state is the comparison. Returns the events made."""
+        if not is_file_folder(folder):
+            return 0
+        changes = 0
+        counts = self.applier.file_playcounts
+        todo = [(folder if folder.endswith("/") else folder + "/", 0)]
+        listings = 0
+        while todo and listings < MAX_TREE_LISTINGS:
+            directory, depth = todo.pop(0)
+            listings += 1
+            files, folders = self._items(directory)
+            for path, count in files.items():
+                counts.pop(path, None)
+                counts[path] = count
+                if self.manual.record_path(path, count, skip_unknown_unwatched=True):
+                    changes += 1
+            if depth < MAX_TREE_DEPTH:
+                todo.extend((sub, depth + 1) for sub in folders)
+        return changes

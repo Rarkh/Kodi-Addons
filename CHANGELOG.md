@@ -32,7 +32,7 @@ Every add-on in this repository has its own version and uses
   UTC timestamp, applied to Kodi's database only when newer than what was applied before, with
   echo suppression, capture of manual watched/unwatched marks, resume point applied in advance
   and a fallback seek. Settings, program menu, path mappings, offline queue, local cache.
-  Test build 0.2.22 on the branch `dev`; not released on `main` yet.
+  Test build 0.2.23 on the branch `dev`; not released on `main` yet.
   New menu/settings action "Check for updates" (Kodi refreshes its repositories at once).
   New action "Write test (diagnosis)": tries several file names and write modes in the storage
   location and shows what Kodi answers.
@@ -77,6 +77,8 @@ Every add-on in this repository has its own version and uses
   The trigger is the marking: a Kodi notification or a closing context menu makes the service
   compare the shown folder with its baseline at once (was: every 30 s); the baseline is one look
   after the folder stayed shown for 3 s.
+  Marking a whole folder: the item that was focused before the context menu opened is walked when
+  the menu closes (3 levels, 40 folders) and the state of its files is sent.
   Writing waits for NFS attributes to settle before it counts a read-back as failed, and the
   error says whether the write was refused or what was read back.
 
