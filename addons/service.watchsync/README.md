@@ -142,7 +142,7 @@ Not in Phase 1: repository set-up, Docker/HTTP backend, series special cases bey
 | Check for new events every | 30 s    | sync interval                                                |
 | Save position every        | 10 s    | local position saving while playing                          |
 | Mark as watched from       | 90 %    |                                                              |
-| Playback started elsewhere | automatic | fallback seek: automatically or ask first                  |
+| Playback started elsewhere | ask first | fallback seek: automatically or ask first                  |
 | Use local cache            | on      | off: queue and state are not kept between restarts           |
 | Log level                  | normal  | debug adds details to the Kodi log                           |
 

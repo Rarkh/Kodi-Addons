@@ -190,16 +190,16 @@ class KodiApplier:
         path = resolver.resolve(event.media_id) if event.unmapped else None
         path = path or (None if event.unmapped else from_media_id(event.media_id, self.mappings))
         if not path:
+            self.log(f"No local path known for {event.media_id}: not written to Kodi", INFO)
             return False
         try:
             self.rpc("Files.SetFileDetails", {"file": path, "media": "video", **details(event)})
         except RpcError as exc:
             if not self.file_details_failed:
                 self.file_details_failed = True
-                self.log(
-                    f"Files.SetFileDetails failed for a file outside the library: {exc}", WARNING
-                )
+                self.log(f"Files.SetFileDetails failed for {path}: {exc}", WARNING)
             return False
+        self.log(f"Files.SetFileDetails wrote {event.type} {event.position_s:.0f} s: {path}", INFO)
         return True
 
     def apply(
